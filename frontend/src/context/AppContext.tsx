@@ -1,0 +1,1010 @@
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import {
+  AdminModelPayload,
+  CustomVoiceTrainingJob,
+  GeneratedSong,
+  PaymentTransaction,
+  PublicPage,
+  RegionMode,
+  RetryAdjustmentOption,
+  StudioTool,
+  UserProfile,
+  UserWallet,
+  VoiceModel,
+} from '../types';
+import { awaazifyApi } from '../services/api';
+import { studioAudio } from '../utils/audioEngine';
+import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
+
+const INITIAL_VOICE_MODELS: VoiceModel[] = [
+  {
+    id: 'vm-atif-aslam',
+    name: 'Atif Aslam',
+    subtitle: 'Soulful romantic vocals for acoustic and pop tracks',
+    category: 'Singers',
+    usageCount: 24500,
+    avatarConfig: {
+      silhouetteType: 'vocalist',
+      gradientTheme: 'emerald',
+      baseFreqHz: 220,
+    },
+    modelFileName: 'atif_aslam_voice.pth',
+    extraFileName: 'atif_aslam_voice.index',
+    defaultPitch: 0,
+    status: 'Active',
+    featured: true,
+  },
+  {
+    id: 'vm-babar-azam',
+    name: 'Babar Azam',
+    subtitle: 'Crisp, friendly voice for upbeat and viral song covers',
+    category: 'Cricketers & Celebs',
+    usageCount: 19840,
+    avatarConfig: {
+      silhouetteType: 'athlete',
+      gradientTheme: 'amber',
+      baseFreqHz: 185,
+    },
+    modelFileName: 'babar_azam_voice.pth',
+    extraFileName: 'babar_azam_voice.index',
+    defaultPitch: 0,
+    status: 'Active',
+    featured: true,
+  },
+  {
+    id: 'vm-imran-khan',
+    name: 'Imran Khan',
+    subtitle: 'Deep, commanding baritone with unmistakable delivery',
+    category: 'Public Leaders',
+    usageCount: 28100,
+    avatarConfig: {
+      silhouetteType: 'orator',
+      gradientTheme: 'emerald',
+      baseFreqHz: 155,
+    },
+    modelFileName: 'imran_khan_voice.pth',
+    extraFileName: 'imran_khan_voice.index',
+    defaultPitch: -2,
+    status: 'Active',
+    featured: true,
+  },
+  {
+    id: 'vm-sidhu-moosewala',
+    name: 'Sidhu Moosewala',
+    subtitle: 'High-energy Punjabi folk and hip-hop vocal presence',
+    category: 'Singers',
+    usageCount: 31200,
+    avatarConfig: {
+      silhouetteType: 'vocalist',
+      gradientTheme: 'amber',
+      baseFreqHz: 196,
+    },
+    modelFileName: 'sidhu_voice.pth',
+    extraFileName: 'sidhu_voice.index',
+    defaultPitch: 0,
+    status: 'Active',
+    featured: true,
+  },
+  {
+    id: 'vm-nusrat-saab',
+    name: 'Nusrat Fateh Ali Khan',
+    subtitle: 'Legendary classical range for emotional and traditional songs',
+    category: 'Singers',
+    usageCount: 17900,
+    avatarConfig: {
+      silhouetteType: 'vocalist',
+      gradientTheme: 'sky',
+      baseFreqHz: 246.9,
+    },
+    modelFileName: 'nusrat_voice.pth',
+    extraFileName: 'nusrat_voice.index',
+    defaultPitch: 0,
+    status: 'Active',
+    featured: true,
+  },
+  {
+    id: 'vm-arijit-singh',
+    name: 'Arijit Singh',
+    subtitle: 'Warm, expressive melody voice for slow ballads',
+    category: 'Singers',
+    usageCount: 22450,
+    avatarConfig: {
+      silhouetteType: 'vocalist',
+      gradientTheme: 'rose',
+      baseFreqHz: 233.1,
+    },
+    modelFileName: 'arijit_voice.pth',
+    extraFileName: 'arijit_voice.index',
+    defaultPitch: 0,
+    status: 'Active',
+    featured: true,
+  },
+  {
+    id: 'vm-global-pop',
+    name: 'The Weeknd',
+    subtitle: 'Smooth modern pop and upbeat radio vocals',
+    category: 'Global Stars',
+    usageCount: 15400,
+    avatarConfig: {
+      silhouetteType: 'popstar',
+      gradientTheme: 'violet',
+      baseFreqHz: 261.6,
+    },
+    modelFileName: 'weeknd_voice.pth',
+    extraFileName: 'weeknd_voice.index',
+    defaultPitch: 2,
+    status: 'Active',
+  },
+  {
+    id: 'vm-taylor-star',
+    name: 'Taylor Swift',
+    subtitle: 'Bright, clear acoustic and pop female vocals',
+    category: 'Global Stars',
+    usageCount: 14100,
+    avatarConfig: {
+      silhouetteType: 'popstar',
+      gradientTheme: 'rose',
+      baseFreqHz: 277.2,
+    },
+    modelFileName: 'taylor_voice.pth',
+    extraFileName: 'taylor_voice.index',
+    defaultPitch: 2,
+    status: 'Active',
+  },
+];
+
+interface AppContextValue {
+  regionMode: RegionMode;
+  setRegionMode: (mode: RegionMode) => void;
+  isAuthenticated: boolean;
+  user: UserProfile | null;
+  wallet: UserWallet;
+  formattedBalance: string;
+  activeView: 'public' | 'studio' | 'admin';
+  setActiveView: (view: 'public' | 'studio' | 'admin') => void;
+  publicPage: PublicPage;
+  setPublicPage: (page: PublicPage) => void;
+  studioTool: StudioTool;
+  setStudioTool: (tool: StudioTool) => void;
+  selectedVoiceId: string;
+  setSelectedVoiceId: (id: string) => void;
+
+  // Auth Gate & Modal
+  isAuthModalOpen: boolean;
+  openAuthModal: (pendingAction?: { targetTool?: StudioTool; voiceId?: string }) => void;
+  closeAuthModal: () => void;
+  loginUser: (email: string, name?: string) => Promise<void>;
+  loginWithGoogle: () => Promise<void>;
+  signUpWithEmail: (email: string, password: string, name?: string) => Promise<{ error?: string }>;
+  verifyEmailOtp: (email: string, token: string, name?: string) => Promise<{ error?: string }>;
+  logoutUser: () => Promise<void>;
+  requireAuthAndNavigate: (targetTool?: StudioTool, voiceId?: string) => void;
+
+  consumeSongPassOrTrial: (isTrialJob: boolean) => boolean;
+  consumeVoicePass: () => boolean;
+  addWalletPackage: (songs: number, voicePasses: number, pkrValue: number, usdValue: number) => void;
+
+  // Voice Models
+  voiceModels: VoiceModel[];
+  addAdminVoiceModel: (payload: AdminModelPayload) => Promise<void>;
+  toggleVoiceModelStatus: (id: string) => void;
+  deleteVoiceModel: (id: string) => void;
+
+  // Generated Songs & Retry
+  generatedSongs: GeneratedSong[];
+  addGeneratedSong: (song: GeneratedSong) => void;
+  applyFreeRetryAdjustment: (
+    songId: string,
+    option: RetryAdjustmentOption
+  ) => Promise<GeneratedSong | null>;
+
+  // Transactions & Admin Approvals
+  transactions: PaymentTransaction[];
+  submitLocalPaymentRequest: (data: {
+    provider: 'easypaisa' | 'jazzcash';
+    packageId: 'song-50' | 'voice-150';
+    packageName: string;
+    songsAdded: number;
+    voicePassAdded: number;
+    amountPkr: number;
+    transactionId: string;
+    screenshotName: string;
+  }) => Promise<void>;
+  submitGlobalPayment: (data: {
+    packageId: 'song-50' | 'voice-150';
+    packageName: string;
+    songsAdded: number;
+    voicePassAdded: number;
+    amountUsd: number;
+  }) => Promise<void>;
+  approveTransaction: (txId: string) => Promise<void>;
+  rejectTransaction: (txId: string) => Promise<void>;
+
+  // Custom Voice Orders
+  trainingJobs: CustomVoiceTrainingJob[];
+  submitCustomVoiceTraining: (data: {
+    voiceName: string;
+    audioFileNames: string[];
+    totalDurationSec: number;
+  }) => Promise<void>;
+  publishTrainedVoiceToUserLibrary: (
+    jobId: string,
+    modelFile: string,
+    extraFile: string
+  ) => Promise<void>;
+
+  // Dedicated Admin Page Trigger & Security Verification
+  isAdminVerified: boolean;
+  setIsAdminVerified: (verified: boolean) => void;
+  triggerLogoMicClick: () => void;
+}
+
+const AppContext = createContext<AppContextValue | undefined>(undefined);
+
+export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [regionMode, setRegionMode] = useState<RegionMode>('PK');
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [isAdminVerified, setIsAdminVerified] = useState<boolean>(false);
+  const [user, setUser] = useState<UserProfile | null>(null);
+  const [wallet, setWallet] = useState<UserWallet>({
+    balancePkr: 50,
+    balanceUsd: 0.99,
+    credits: 1,
+    voicePasses: 0,
+    hasFreeTrial: true,
+  });
+
+  const [activeView, setActiveView] = useState<'public' | 'studio' | 'admin'>('public');
+  const [publicPage, setPublicPage] = useState<PublicPage>('home');
+  const [studioTool, setStudioTool] = useState<StudioTool>('song-cover');
+  const [selectedVoiceId, setSelectedVoiceId] = useState<string>(INITIAL_VOICE_MODELS[1].id); // Defaults to Babar Azam
+
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
+  const [pendingRedirect, setPendingRedirect] = useState<{
+    targetTool?: StudioTool;
+    voiceId?: string;
+  } | null>(null);
+
+  const [voiceModels, setVoiceModels] = useState<VoiceModel[]>(INITIAL_VOICE_MODELS);
+  const [generatedSongs, setGeneratedSongs] = useState<GeneratedSong[]>([]);
+  const [transactions, setTransactions] = useState<PaymentTransaction[]>([
+    {
+      id: 'tx-sample-1',
+      userId: 'usr-sample-01',
+      userEmail: 'arslan.khan@gmail.com',
+      provider: 'easypaisa',
+      packageId: 'voice-150',
+      packageName: 'Custom Voice + 1 Free Song',
+      songsAdded: 1,
+      voicePassAdded: 1,
+      amountDisplay: 'Rs. 150',
+      amountPkr: 150,
+      amountUsd: 2.99,
+      transactionId: '38492019482',
+      screenshotName: 'easypaisa_150_receipt.jpg',
+      status: 'Pending',
+      createdAt: '2 mins ago',
+    },
+  ]);
+
+  const [trainingJobs, setTrainingJobs] = useState<CustomVoiceTrainingJob[]>([
+    {
+      id: 'job-sample-01',
+      userId: 'usr-sample-01',
+      userEmail: 'arslan.khan@gmail.com',
+      voiceName: 'Arslan Studio Voice',
+      audioFileNames: ['voice_recording_3min.wav'],
+      totalDurationSec: 195,
+      autoCleanNoise: true,
+      status: 'Cleaning & Queued',
+      createdAt: '10 mins ago',
+    },
+  ]);
+
+  const [micClickTimestamps, setMicClickTimestamps] = useState<number[]>([]);
+
+  // Sync Supabase user profile & wallet
+  const syncSupabaseUser = useCallback(async (supabaseUser: any, customName?: string) => {
+    if (!supabaseUser) return;
+    const uid = supabaseUser.id;
+    const email = supabaseUser.email || 'user@example.com';
+    const name =
+      customName ||
+      supabaseUser.user_metadata?.name ||
+      email.split('@')[0].replace(/[._-]/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase());
+
+    const profile: UserProfile = {
+      id: uid,
+      name,
+      email,
+      avatarUrl: supabaseUser.user_metadata?.avatar_url || '',
+      role: 'user',
+      emailVerified: true,
+    };
+
+    setUser(profile);
+    setIsAuthenticated(true);
+
+    if (isSupabaseConfigured) {
+      try {
+        const { data: existingUser } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', uid)
+          .maybeSingle();
+
+        if (existingUser) {
+          setWallet({
+            balancePkr: existingUser.balance_pkr ?? 0,
+            balanceUsd: existingUser.balance_usd ?? 0,
+            credits: existingUser.song_credits ?? 0,
+            voicePasses: existingUser.voice_passes ?? 0,
+            hasFreeTrial: existingUser.has_free_trial ?? true,
+          });
+        } else {
+          // First login: create in public.users with welcome credit (50 PKR / 1 song)
+          await supabase.from('users').insert({
+            id: uid,
+            email,
+            name,
+            role: 'user',
+            balance_pkr: 50,
+            balance_usd: 0.99,
+            song_credits: 1,
+            voice_passes: 0,
+            has_free_trial: true,
+            email_verified: true,
+          });
+          setWallet({
+            balancePkr: 50,
+            balanceUsd: 0.99,
+            credits: 1,
+            voicePasses: 0,
+            hasFreeTrial: true,
+          });
+        }
+      } catch (err) {
+        console.warn('Supabase user sync error:', err);
+      }
+    }
+  }, []);
+
+  // Initialize Auth state listener and initial data
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+
+    // Clean URL hash/params (removes #access_token=..., #error=..., or ?code=...)
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash;
+      const search = window.location.search;
+      if (
+        hash.includes('access_token') ||
+        hash.includes('error') ||
+        search.includes('code=') ||
+        search.includes('error=')
+      ) {
+        window.history.replaceState(null, '', window.location.pathname);
+        setActiveView('studio');
+      }
+    }
+
+    // Load active voice models from public.voice_models
+    const fetchVoiceModels = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('voice_models')
+          .select('*')
+          .eq('status', 'Active')
+          .order('usage_count', { ascending: false });
+
+        if (data && data.length > 0 && !error) {
+          const mapped: VoiceModel[] = data.map((d: any) => ({
+            id: d.id,
+            name: d.name,
+            subtitle: d.subtitle,
+            category: d.category,
+            usageCount: d.usage_count || 0,
+            avatarConfig: d.avatar_config || {
+              silhouetteType: 'vocalist',
+              gradientTheme: 'emerald',
+              baseFreqHz: 220,
+            },
+            modelFileName: d.model_file_name || `${d.name.toLowerCase().replace(/ /g, '_')}.pth`,
+            extraFileName: d.extra_file_name || `${d.name.toLowerCase().replace(/ /g, '_')}.index`,
+            modelFileUrl: d.model_file_url,
+            indexFileUrl: d.index_file_url,
+            defaultPitch: d.default_pitch || 0,
+            status: d.status || 'Active',
+            isCustom: d.is_custom || false,
+            ownerUserId: d.owner_user_id,
+            featured: d.featured || false,
+          }));
+          setVoiceModels(mapped);
+          setSelectedVoiceId((prev) => {
+            const exists = mapped.some((m) => m.id === prev);
+            return exists ? prev : mapped[0].id;
+          });
+        }
+      } catch (err) {
+        console.warn('Failed to load voice models from Supabase:', err);
+      }
+    };
+
+    fetchVoiceModels();
+
+    // Check existing auth session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        syncSupabaseUser(session.user);
+      }
+    });
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session?.user) {
+        syncSupabaseUser(session.user);
+        if (event === 'SIGNED_IN') {
+          setActiveView('studio');
+        }
+      } else {
+        setIsAuthenticated(false);
+        setUser(null);
+      }
+    });
+
+    return () => {
+      authListener.subscription.unsubscribe();
+    };
+  }, [syncSupabaseUser]);
+
+  // Secret Admin Page Trigger: Ctrl + Shift + A or 5 clicks on Logo Microphone
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'a') {
+        e.preventDefault();
+        setActiveView((prev) => (prev === 'admin' ? (isAuthenticated ? 'studio' : 'public') : 'admin'));
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isAuthenticated]);
+
+  const triggerLogoMicClick = () => {
+    const now = Date.now();
+    const recent = [...micClickTimestamps.filter((t) => now - t < 2500), now];
+    if (recent.length >= 5) {
+      setMicClickTimestamps([]);
+      setActiveView('admin');
+    } else {
+      setMicClickTimestamps(recent);
+    }
+  };
+
+  // Formatted currency balance (e.g., "Rs. 0" or "$0.00")
+  const formattedBalance =
+    regionMode === 'PK'
+      ? `Rs. ${wallet.balancePkr}`
+      : `$${wallet.balanceUsd.toFixed(2)}`;
+
+  const openAuthModal = (pendingAction?: { targetTool?: StudioTool; voiceId?: string }) => {
+    if (pendingAction) {
+      setPendingRedirect(pendingAction);
+    }
+    setIsAuthModalOpen(true);
+  };
+
+  const closeAuthModal = () => {
+    setIsAuthModalOpen(false);
+    setPendingRedirect(null);
+  };
+
+  const loginUser = async (email: string, name?: string) => {
+    const cleanEmail = email.trim() || 'user@example.com';
+    const cleanName =
+      name?.trim() ||
+      (cleanEmail === 'user@example.com'
+        ? 'Studio Creator'
+        : cleanEmail
+            .split('@')[0]
+            .replace(/[._-]/g, ' ')
+            .replace(/\b\w/g, (l) => l.toUpperCase()));
+
+    const mockId = `usr_${Date.now().toString(36)}`;
+    setUser({
+      id: mockId,
+      name: cleanName,
+      email: cleanEmail,
+      avatarUrl: '',
+      role: 'user',
+      emailVerified: true,
+    });
+    setIsAuthenticated(true);
+    setWallet({
+      balancePkr: 50,
+      balanceUsd: 0.99,
+      credits: 1,
+      voicePasses: 0,
+      hasFreeTrial: true,
+    });
+    setIsAuthModalOpen(false);
+
+    if (pendingRedirect?.voiceId) {
+      setSelectedVoiceId(pendingRedirect.voiceId);
+    }
+    setStudioTool(pendingRedirect?.targetTool || 'song-cover');
+    setActiveView('studio');
+    setPendingRedirect(null);
+  };
+
+  const loginWithGoogle = async () => {
+    if (isSupabaseConfigured) {
+      await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: window.location.origin,
+        },
+      });
+    } else {
+      await loginUser('user@example.com', 'Studio Creator');
+    }
+  };
+
+  const signUpWithEmail = async (email: string, password: string, name?: string) => {
+    if (isSupabaseConfigured) {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: { name },
+        },
+      });
+      if (error) return { error: error.message };
+      if (data.user) {
+        await syncSupabaseUser(data.user, name);
+      }
+      return {};
+    }
+    await loginUser(email, name);
+    return {};
+  };
+
+  const verifyEmailOtp = async (email: string, token: string, name?: string) => {
+    if (isSupabaseConfigured) {
+      const { data, error } = await supabase.auth.verifyOtp({
+        email,
+        token,
+        type: 'signup',
+      });
+      if (error) return { error: error.message };
+      if (data.user) {
+        await syncSupabaseUser(data.user, name);
+      }
+      return {};
+    }
+    await loginUser(email, name);
+    return {};
+  };
+
+  const logoutUser = async () => {
+    studioAudio.stopAll();
+    if (isSupabaseConfigured) {
+      await supabase.auth.signOut();
+    }
+    setIsAuthenticated(false);
+    setUser(null);
+    setActiveView('public');
+    setPublicPage('home');
+  };
+
+  const requireAuthAndNavigate = (targetTool: StudioTool = 'song-cover', voiceId?: string) => {
+    if (voiceId) {
+      setSelectedVoiceId(voiceId);
+    }
+    if (!isAuthenticated) {
+      openAuthModal({ targetTool, voiceId });
+      return;
+    }
+    setStudioTool(targetTool);
+    setActiveView('studio');
+  };
+
+  const consumeSongPassOrTrial = (isTrialJob: boolean): boolean => {
+    if (isTrialJob) {
+      if (wallet.hasFreeTrial || wallet.credits === 0) {
+        setWallet((prev) => ({ ...prev, hasFreeTrial: false }));
+        return true;
+      }
+    }
+    if (wallet.credits >= 1 || wallet.balancePkr >= 50 || wallet.balanceUsd >= 0.99) {
+      setWallet((prev) => ({
+        ...prev,
+        credits: Math.max(0, prev.credits - 1),
+        balancePkr: Math.max(0, prev.balancePkr - 50),
+        balanceUsd: Math.max(0, Number((prev.balanceUsd - 0.99).toFixed(2))),
+      }));
+      return true;
+    }
+    return false;
+  };
+
+  const consumeVoicePass = (): boolean => {
+    if (wallet.voicePasses >= 1 || wallet.balancePkr >= 150 || wallet.balanceUsd >= 2.99) {
+      setWallet((prev) => ({
+        ...prev,
+        voicePasses: Math.max(0, prev.voicePasses - 1),
+        credits: prev.credits + 1, // Includes 1 Free Full Song
+        balancePkr: Math.max(50, prev.balancePkr - 100),
+        balanceUsd: Math.max(0.99, Number((prev.balanceUsd - 2.0).toFixed(2))),
+      }));
+      return true;
+    }
+    return false;
+  };
+
+  const addWalletPackage = (
+    songs: number,
+    voicePasses: number,
+    pkrValue: number,
+    usdValue: number
+  ) => {
+    setWallet((prev) => ({
+      ...prev,
+      credits: prev.credits + songs,
+      voicePasses: prev.voicePasses + voicePasses,
+      balancePkr: prev.balancePkr + pkrValue,
+      balanceUsd: Number((prev.balanceUsd + usdValue).toFixed(2)),
+    }));
+  };
+
+  const addAdminVoiceModel = async (payload: AdminModelPayload) => {
+    const res = await awaazifyApi.createAdminVoiceModel(payload);
+    const newModel: VoiceModel = {
+      id: res.modelId,
+      name: payload.name,
+      subtitle: payload.subtitle,
+      category: payload.category as any,
+      usageCount: 1,
+      avatarConfig: payload.avatarConfig as any,
+      modelFileName: payload.modelFileName,
+      extraFileName: payload.extraFileName,
+      modelFileUrl: payload.modelFileUrl,
+      indexFileUrl: payload.indexFileUrl,
+      defaultPitch: payload.defaultPitch,
+      previewAudioUrl: payload.previewAudioUrl,
+      status: payload.status,
+      featured: true,
+    };
+    setVoiceModels((prev) => [newModel, ...prev]);
+
+    if (isSupabaseConfigured) {
+      await supabase.from('voice_models').insert({
+        id: res.modelId,
+        name: payload.name,
+        subtitle: payload.subtitle,
+        category: payload.category,
+        usage_count: 0,
+        avatar_config: payload.avatarConfig,
+        model_file_name: payload.modelFileName,
+        extra_file_name: payload.extraFileName,
+        model_file_url: payload.modelFileUrl,
+        index_file_url: payload.indexFileUrl,
+        default_pitch: payload.defaultPitch,
+        preview_audio_url: payload.previewAudioUrl,
+        status: payload.status,
+        featured: true,
+      });
+    }
+  };
+
+  const toggleVoiceModelStatus = (id: string) => {
+    setVoiceModels((prev) =>
+      prev.map((m) => {
+        if (m.id !== id) return m;
+        const nextStatus =
+          m.status === 'Active'
+            ? 'Coming Soon'
+            : m.status === 'Coming Soon'
+            ? 'Hidden'
+            : 'Active';
+        return { ...m, status: nextStatus };
+      })
+    );
+  };
+
+  const deleteVoiceModel = (id: string) => {
+    setVoiceModels((prev) => prev.filter((m) => m.id !== id));
+  };
+
+  const addGeneratedSong = (song: GeneratedSong) => {
+    setGeneratedSongs((prev) => [song, ...prev]);
+    setVoiceModels((prev) =>
+      prev.map((m) =>
+        m.id === song.voiceModelId ? { ...m, usageCount: m.usageCount + 1 } : m
+      )
+    );
+  };
+
+  const applyFreeRetryAdjustment = async (
+    songId: string,
+    option: RetryAdjustmentOption
+  ): Promise<GeneratedSong | null> => {
+    const target = generatedSongs.find((s) => s.id === songId);
+    if (!target) return null;
+
+    const pitchShift: 0 | -2 | 2 =
+      option === 'deeper' ? -2 : option === 'higher' ? 2 : target.pitchShift;
+    const clarityBoost = option === 'clarity' ? true : target.clarityBoost;
+
+    await awaazifyApi.generateSongCover({
+      userId: user?.id || 'usr_guest',
+      inputType: target.sourceType,
+      isTrialPreview: target.isTrialPreview,
+      voiceModelId: target.voiceModelId,
+      pitchShift,
+      clarityBoost,
+      isRetry: true,
+      parentJobId: target.id,
+    });
+
+    const updatedSong: GeneratedSong = {
+      ...target,
+      pitchShift,
+      clarityBoost,
+      hasUsedFreeRetry: true,
+      isRetryVersion: true,
+      createdAt: 'Updated via Free Retry',
+    };
+
+    setGeneratedSongs((prev) =>
+      prev.map((s) => (s.id === songId ? updatedSong : s))
+    );
+    return updatedSong;
+  };
+
+  const submitLocalPaymentRequest = async (data: {
+    provider: 'easypaisa' | 'jazzcash';
+    packageId: 'song-50' | 'voice-150';
+    packageName: string;
+    songsAdded: number;
+    voicePassAdded: number;
+    amountPkr: number;
+    transactionId: string;
+    screenshotName: string;
+  }) => {
+    const res = await awaazifyApi.submitLocalPayment({
+      userId: user?.id || 'usr_studio',
+      provider: data.provider,
+      packageId: data.packageId,
+      amountPkr: data.amountPkr,
+      transactionId: data.transactionId,
+      screenshotUrl: data.screenshotName,
+    });
+
+    const newTx: PaymentTransaction = {
+      id: res.paymentId,
+      userId: user?.id || 'usr_studio',
+      userEmail: user?.email || 'user@example.com',
+      provider: data.provider,
+      packageId: data.packageId,
+      packageName: data.packageName,
+      songsAdded: data.songsAdded,
+      voicePassAdded: data.voicePassAdded,
+      amountDisplay: `Rs. ${data.amountPkr}`,
+      amountPkr: data.amountPkr,
+      amountUsd: data.packageId === 'song-50' ? 0.99 : 2.99,
+      transactionId: data.transactionId,
+      screenshotName: data.screenshotName,
+      status: 'Pending',
+      createdAt: 'Just now',
+    };
+
+    setTransactions((prev) => [newTx, ...prev]);
+  };
+
+  const submitGlobalPayment = async (data: {
+    packageId: 'song-50' | 'voice-150';
+    packageName: string;
+    songsAdded: number;
+    voicePassAdded: number;
+    amountUsd: number;
+  }) => {
+    const pkrEquivalent = data.packageId === 'song-50' ? 50 : 150;
+    const newTx: PaymentTransaction = {
+      id: `pay_${Date.now().toString(36)}`,
+      userId: user?.id || 'usr_studio',
+      userEmail: user?.email || 'user@example.com',
+      provider: 'card',
+      packageId: data.packageId,
+      packageName: data.packageName,
+      songsAdded: data.songsAdded,
+      voicePassAdded: data.voicePassAdded,
+      amountDisplay: `$${data.amountUsd.toFixed(2)}`,
+      amountPkr: pkrEquivalent,
+      amountUsd: data.amountUsd,
+      transactionId: `CARD_${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
+      status: 'Approved',
+      createdAt: 'Verified Instantly',
+    };
+    setTransactions((prev) => [newTx, ...prev]);
+    addWalletPackage(
+      data.songsAdded,
+      data.voicePassAdded,
+      pkrEquivalent,
+      data.amountUsd
+    );
+  };
+
+  const approveTransaction = async (txId: string) => {
+    await awaazifyApi.approvePayment(txId);
+    setTransactions((prev) =>
+      prev.map((tx) => {
+        if (tx.id !== txId || tx.status === 'Approved') return tx;
+        addWalletPackage(
+          tx.songsAdded,
+          tx.voicePassAdded,
+          tx.amountPkr || (tx.packageId === 'song-50' ? 50 : 150),
+          tx.amountUsd || (tx.packageId === 'song-50' ? 0.99 : 2.99)
+        );
+        return { ...tx, status: 'Approved' };
+      })
+    );
+  };
+
+  const rejectTransaction = async (txId: string) => {
+    await awaazifyApi.rejectPayment(txId);
+    setTransactions((prev) =>
+      prev.map((tx) => (tx.id === txId ? { ...tx, status: 'Rejected' } : tx))
+    );
+  };
+
+  const submitCustomVoiceTraining = async (data: {
+    voiceName: string;
+    audioFileNames: string[];
+    totalDurationSec: number;
+  }) => {
+    const res = await awaazifyApi.trainCustomVoice({
+      userId: user?.id || 'usr_studio',
+      voiceName: data.voiceName,
+      audioFiles: data.audioFileNames,
+      autoCleanNoise: true,
+    });
+
+    const customModel: VoiceModel = {
+      id: `vm_custom_${Date.now().toString(36)}`,
+      name: data.voiceName,
+      subtitle: 'Personal Custom Voice · Noise Cleaned',
+      category: 'Custom',
+      usageCount: 1,
+      avatarConfig: {
+        silhouetteType: 'custom',
+        gradientTheme: 'emerald',
+        baseFreqHz: 210,
+      },
+      modelFileName: `${data.voiceName.toLowerCase().replace(/\s+/g, '_')}.pth`,
+      extraFileName: `${data.voiceName.toLowerCase().replace(/\s+/g, '_')}.index`,
+      defaultPitch: 0,
+      status: 'Active',
+      isCustom: true,
+      ownerUserId: user?.id || 'usr_studio',
+    };
+
+    const newJob: CustomVoiceTrainingJob = {
+      id: res.trainingJobId,
+      userId: user?.id || 'usr_studio',
+      userEmail: user?.email || 'user@example.com',
+      voiceName: data.voiceName,
+      audioFileNames: data.audioFileNames,
+      totalDurationSec: data.totalDurationSec,
+      autoCleanNoise: true,
+      status: 'Active in Library',
+      createdAt: 'Just now',
+      linkedModelId: customModel.id,
+    };
+
+    setTrainingJobs((prev) => [newJob, ...prev]);
+    setVoiceModels((prev) => [customModel, ...prev]);
+    setSelectedVoiceId(customModel.id);
+  };
+
+  const publishTrainedVoiceToUserLibrary = async (
+    jobId: string,
+    modelFile: string,
+    extraFile: string
+  ) => {
+    const job = trainingJobs.find((j) => j.id === jobId);
+    if (!job) return;
+
+    const res = await awaazifyApi.publishTrainedVoice(jobId, {
+      modelFileUrl: modelFile,
+      indexFileUrl: extraFile,
+    });
+
+    const newCustomModel: VoiceModel = {
+      id: res.voiceModelId || `vm_custom_${Date.now().toString(36)}`,
+      name: job.voiceName,
+      subtitle: `Personal Voice (${job.userEmail})`,
+      category: 'Custom',
+      usageCount: 1,
+      avatarConfig: {
+        silhouetteType: 'custom',
+        gradientTheme: 'emerald',
+        baseFreqHz: 205,
+      },
+      modelFileName: modelFile || 'ready_voice.pth',
+      extraFileName: extraFile || 'ready_voice.index',
+      defaultPitch: 0,
+      status: 'Active',
+      isCustom: true,
+      ownerUserId: job.userId,
+    };
+
+    setVoiceModels((prev) => [newCustomModel, ...prev]);
+    setTrainingJobs((prev) =>
+      prev.map((j) =>
+        j.id === jobId
+          ? { ...j, status: 'Active in Library', linkedModelId: newCustomModel.id }
+          : j
+      )
+    );
+  };
+
+  return (
+    <AppContext.Provider
+      value={{
+        regionMode,
+        setRegionMode,
+        isAuthenticated,
+        user,
+        wallet,
+        formattedBalance,
+        activeView,
+        setActiveView,
+        publicPage,
+        setPublicPage,
+        studioTool,
+        setStudioTool,
+        selectedVoiceId,
+        setSelectedVoiceId,
+        isAuthModalOpen,
+        openAuthModal,
+        closeAuthModal,
+        loginUser,
+        loginWithGoogle,
+        signUpWithEmail,
+        verifyEmailOtp,
+        logoutUser,
+        requireAuthAndNavigate,
+        consumeSongPassOrTrial,
+        consumeVoicePass,
+        addWalletPackage,
+        voiceModels,
+        addAdminVoiceModel,
+        toggleVoiceModelStatus,
+        deleteVoiceModel,
+        generatedSongs,
+        addGeneratedSong,
+        applyFreeRetryAdjustment,
+        transactions,
+        submitLocalPaymentRequest,
+        submitGlobalPayment,
+        approveTransaction,
+        rejectTransaction,
+        trainingJobs,
+        submitCustomVoiceTraining,
+        publishTrainedVoiceToUserLibrary,
+        isAdminVerified,
+        setIsAdminVerified,
+        triggerLogoMicClick,
+      }}
+    >
+      {children}
+    </AppContext.Provider>
+  );
+};
+
+export const useApp = (): AppContextValue => {
+  const ctx = useContext(AppContext);
+  if (!ctx) {
+    throw new Error('useApp must be used within an AppProvider');
+  }
+  return ctx;
+};

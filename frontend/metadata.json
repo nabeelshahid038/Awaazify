@@ -1,0 +1,6 @@
+{
+  "name": "Awaazify — AI Voice Studio",
+  "description": "Studio-grade AI song cover generator with automatic Demucs vocal separation, RVC v2 voice conversion, smart YouTube trimmer, and custom voice model training.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
