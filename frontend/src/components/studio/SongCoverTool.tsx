@@ -56,9 +56,6 @@ export const SongCoverTool: React.FC = () => {
     'https://www.youtube.com/watch?v=StudioTrack'
   );
   const [isTrimmerOpen, setIsTrimmerOpen] = useState<boolean>(false);
-  // P1: real YouTube metadata fetched when the trimmer opens (nulls = placeholders).
-  const [ytMetaTitle, setYtMetaTitle] = useState<string | null>(null);
-  const [ytMetaAuthor, setYtMetaAuthor] = useState<string | null>(null);
   const [trimmedYoutube, setTrimmedYoutube] =
     useState<TrimmedYouTubeSelection | null>({
       youtubeUrl: 'https://www.youtube.com/watch?v=StudioTrack',
@@ -112,13 +109,6 @@ export const SongCoverTool: React.FC = () => {
       setYoutubeUrlInput('https://www.youtube.com/watch?v=StudioTrack');
     }
     setIsTrimmerOpen(true);
-    // P1: fetch real title/author in the background; the modal opens
-    // immediately and updates when metadata arrives (nulls = placeholders).
-    const url = youtubeUrlInput.trim() || 'https://www.youtube.com/watch?v=StudioTrack';
-    awaazifyApi.getYouTubeMeta(url).then((meta) => {
-      setYtMetaTitle(meta.title);
-      setYtMetaAuthor(meta.author_name);
-    });
   };
 
   const stopAllAudio = () => {
@@ -321,6 +311,22 @@ export const SongCoverTool: React.FC = () => {
     if (stage === 2) return `2. Converting vocals to ${selectedModel.name}...`;
     return '3. Mixing final track with original background music...';
   };
+
+  // No voice models in the catalog yet (e.g. right after demo removal, before
+  // the admin adds real ones) — show a friendly empty state instead of crashing
+  // on selectedModel being undefined.
+  if (!selectedModel) {
+    return (
+      <div className="space-y-6 sm:space-y-8 min-w-0">
+        <div className="p-10 rounded-3xl bg-white border border-slate-200 text-center space-y-3">
+          <p className="text-xl font-extrabold text-[#0F172A]">Koi voice model nahi mila</p>
+          <p className="text-sm text-slate-500">
+            Abhi catalog me koi voice nahi hai. Thodi der me dobara check karein.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 sm:space-y-8 min-w-0">
@@ -810,8 +816,6 @@ export const SongCoverTool: React.FC = () => {
       <YouTubeTrimmerModal
         isOpen={isTrimmerOpen}
         youtubeUrl={youtubeUrlInput}
-        videoTitle={ytMetaTitle ?? undefined}
-        channelName={ytMetaAuthor ?? undefined}
         onClose={() => setIsTrimmerOpen(false)}
         onConfirm={(selection) => {
           setTrimmedYoutube(selection);
