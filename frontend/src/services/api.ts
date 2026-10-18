@@ -287,6 +287,36 @@ export const awaazifyApi = {
   },
 
   /**
+   * DELETE /api/v1/admin/payments/{paymentId}
+   * Permanently deletes a payment record (admin only, for dummy cleanup).
+   */
+  async deletePayment(paymentId: string): Promise<void> {
+    const res = await fetch(`${API_BASE_URL}/api/v1/admin/payments/${paymentId}`, {
+      method: 'DELETE',
+      headers: await authHeaders(),
+    });
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      throw new Error(errorData.detail || `Delete failed: ${res.status}`);
+    }
+  },
+
+  /**
+   * DELETE /api/v1/admin/training-jobs/{jobId}
+   * Permanently deletes a training job record (admin only, for dummy cleanup).
+   */
+  async deleteTrainingJob(jobId: string): Promise<void> {
+    const res = await fetch(`${API_BASE_URL}/api/v1/admin/training-jobs/${jobId}`, {
+      method: 'DELETE',
+      headers: await authHeaders(),
+    });
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      throw new Error(errorData.detail || `Delete failed: ${res.status}`);
+    }
+  },
+
+  /**
    * POST /api/v1/admin/training-jobs/{jobId}/publish
    */
   async publishTrainedVoice(

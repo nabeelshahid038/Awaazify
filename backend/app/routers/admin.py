@@ -158,6 +158,28 @@ def reject_payment(paymentId: str, admin: dict = Depends(require_admin)):
         )
     return {"status": "Rejected", "paymentId": paymentId}
 
+
+@router.delete("/payments/{paymentId}")
+def delete_payment(paymentId: str, admin: dict = Depends(require_admin)):
+    """Permanently delete a payment transaction record (admin only). Used to
+    clean up test/dummy entries."""
+    logger.info(f"Admin {admin['id']} deleting payment {paymentId}")
+    deleted = db.delete("payment_transactions", "id", paymentId)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Payment transaction not found")
+    return {"status": "success", "paymentId": paymentId}
+
+
+@router.delete("/training-jobs/{jobId}")
+def delete_training_job(jobId: str, admin: dict = Depends(require_admin)):
+    """Permanently delete a voice training job record (admin only). Used to
+    clean up test/dummy entries."""
+    logger.info(f"Admin {admin['id']} deleting training job {jobId}")
+    deleted = db.delete("voice_training_jobs", "id", jobId)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Voice training job not found")
+    return {"status": "success", "jobId": jobId}
+
 @router.post("/training-jobs/{jobId}/publish")
 def publish_trained_custom_voice(jobId: str, payload: PublishTrainedVoicePayload, admin: dict = Depends(require_admin)):
     logger.info(f"Admin {admin['id']} publishing trained custom voice for job {jobId}")
