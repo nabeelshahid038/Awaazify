@@ -173,10 +173,7 @@ interface AppContextValue {
   isAuthModalOpen: boolean;
   openAuthModal: (pendingAction?: { targetTool?: StudioTool; voiceId?: string }) => void;
   closeAuthModal: () => void;
-  loginUser: (email: string, name?: string) => Promise<void>;
   loginWithGoogle: () => Promise<void>;
-  signUpWithEmail: (email: string, password: string, name?: string) => Promise<{ error?: string }>;
-  verifyEmailOtp: (email: string, token: string, name?: string) => Promise<{ error?: string }>;
   logoutUser: () => Promise<void>;
   requireAuthAndNavigate: (targetTool?: StudioTool, voiceId?: string) => void;
 
@@ -497,91 +494,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setPendingRedirect(null);
   };
 
-  const loginUser = async (email: string, name?: string) => {
-    const cleanEmail = email.trim() || 'user@example.com';
-    const cleanName =
-      name?.trim() ||
-      (cleanEmail === 'user@example.com'
-        ? 'Studio Creator'
-        : cleanEmail
-            .split('@')[0]
-            .replace(/[._-]/g, ' ')
-            .replace(/\b\w/g, (l) => l.toUpperCase()));
-
-    const mockId = `usr_${Date.now().toString(36)}`;
-    setUser({
-      id: mockId,
-      name: cleanName,
-      email: cleanEmail,
-      avatarUrl: '',
-      role: 'user',
-      emailVerified: true,
-    });
-    setIsAuthenticated(true);
-    setWallet({
-      balancePkr: 50,
-      balanceUsd: 0.99,
-      credits: 1,
-      voicePasses: 0,
-      hasFreeTrial: true,
-    });
-    setIsAuthModalOpen(false);
-
-    if (pendingRedirect?.voiceId) {
-      setSelectedVoiceId(pendingRedirect.voiceId);
-    }
-    setStudioTool(pendingRedirect?.targetTool || 'song-cover');
-    setActiveView('studio');
-    setPendingRedirect(null);
-  };
-
   const loginWithGoogle = async () => {
-    if (isSupabaseConfigured) {
-      await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: window.location.origin,
-        },
-      });
-    } else {
-      await loginUser('user@example.com', 'Studio Creator');
+    if (!isSupabaseConfigured) {
+      throw new Error('Sign-in is not configured. Please try again later.');
     }
-  };
-
-  const signUpWithEmail = async (email: string, password: string, name?: string) => {
-    if (isSupabaseConfigured) {
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: { name },
-        },
-      });
-      if (error) return { error: error.message };
-      if (data.user) {
-        await syncSupabaseUser(data.user, name);
-      }
-      return {};
-    }
-    await loginUser(email, name);
-    return {};
-  };
-
-  const verifyEmailOtp = async (email: string, token: string, name?: string) => {
-    if (isSupabaseConfigured) {
-      const { data, error } = await supabase.auth.verifyOtp({
-        email,
-        token,
-        type: 'signup',
-      });
-      if (error) return { error: error.message };
-      if (data.user) {
-        await syncSupabaseUser(data.user, name);
-      }
-      return {};
-    }
-    await loginUser(email, name);
-    return {};
+    await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: window.location.origin,
+      },
+    });
   };
 
   const logoutUser = async () => {
@@ -977,10 +899,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isAuthModalOpen,
         openAuthModal,
         closeAuthModal,
-        loginUser,
         loginWithGoogle,
-        signUpWithEmail,
-        verifyEmailOtp,
         logoutUser,
         requireAuthAndNavigate,
         consumeSongPassOrTrial,
