@@ -240,7 +240,7 @@ export const AdminDashboard: React.FC = () => {
               <div className="space-y-4">
                 {user?.email && (
                   <p className="text-xs text-slate-500 font-semibold text-center">
-                    Signed in as <span className="text-[#0F172A]">{user.email}</span>
+                    Signed in as <span className="text-[#0F172A]">{user?.email ?? ''}</span>
                   </p>
                 )}
                 {gateError && (

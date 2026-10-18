@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import {
   AdminModelPayload,
   CustomVoiceTrainingJob,
@@ -448,17 +448,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     fetchVoiceModels();
 
+    // Tracks whether this page load has ever seen an authenticated session.
+    // Supabase re-emits SIGNED_IN when a backgrounded tab becomes visible
+    // again (session recovery / token refresh) — that must NOT navigate the
+    // user. Only the FIRST session of a page load (a genuine fresh login,
+    // which starts with no session) triggers post-login routing.
+    const sessionSeenRef = useRef(false);
+
     // Check existing auth session
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
+        sessionSeenRef.current = true;
         syncSupabaseUser(session.user);
       }
     });
 
     const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
       if (session?.user) {
+        const isFreshLogin = event === 'SIGNED_IN' && !sessionSeenRef.current;
+        sessionSeenRef.current = true;
         syncSupabaseUser(session.user);
-        if (event === 'SIGNED_IN') {
+        if (isFreshLogin) {
           setActiveView(resolvePostLoginView());
         }
       } else {
