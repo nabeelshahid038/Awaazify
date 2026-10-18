@@ -390,29 +390,29 @@ export const awaazifyApi = {
   },
 
   /**
-   * GET /api/v1/utils/youtube-meta?url=<encoded> — real YouTube title/author.
-   * Returns {title, author_name}; both null on any failure — the caller
-   * falls back to placeholder text. Never throws.
+   * GET /api/v1/covers/youtube-meta?url=<encoded> — real YouTube metadata.
+   * Returns {title, author, duration_sec, thumbnail_url}; all null on failure.
+   * Public endpoint (no auth). Never throws.
    */
   async getYouTubeMeta(
     url: string
-  ): Promise<{ title: string | null; author_name: string | null }> {
-    const fallback = { title: null as string | null, author_name: null as string | null };
+  ): Promise<{ title: string | null; author: string | null; duration_sec: number | null; thumbnail_url: string | null }> {
+    const fallback = { title: null as string | null, author: null as string | null, duration_sec: null as number | null, thumbnail_url: null as string | null };
     if (!url || !url.trim()) return fallback;
     try {
       const res = await fetch(
-        `${API_BASE_URL}/api/v1/utils/youtube-meta?url=${encodeURIComponent(url.trim())}`,
-        { headers: await authHeaders() }
+        `${API_BASE_URL}/api/v1/covers/youtube-meta?url=${encodeURIComponent(url.trim())}`
       );
       if (!res.ok) return fallback;
       const data = await res.json();
       return {
         title: typeof data.title === 'string' && data.title ? data.title : null,
-        author_name:
-          typeof data.author_name === 'string' && data.author_name ? data.author_name : null,
+        author: typeof data.author === 'string' && data.author ? data.author : null,
+        duration_sec: typeof data.duration_sec === 'number' && data.duration_sec > 0 ? data.duration_sec : null,
+        thumbnail_url: typeof data.thumbnail_url === 'string' && data.thumbnail_url ? data.thumbnail_url : null,
       };
     } catch (err) {
-      console.warn('[API] YouTube metadata fetch failed, using placeholders:', err);
+      console.warn('[API] YouTube metadata fetch failed:', err);
       return fallback;
     }
   },
