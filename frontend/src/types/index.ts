@@ -1,6 +1,6 @@
 export type RegionMode = 'PK' | 'GLOBAL';
 
-export type PublicPage = 'home' | 'voices' | 'how-it-works' | 'pricing';
+export type PublicPage = 'home' | 'voices' | 'how-it-works' | 'pricing' | 'terms' | 'privacy' | 'notfound';
 
 export type StudioTool = 'song-cover' | 'train-voice' | 'my-songs' | 'wallet';
 

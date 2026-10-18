@@ -1,8 +1,14 @@
 import logging
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.config import FRONTEND_URL, HOST, PORT
+from app.config import (
+    FRONTEND_URL, HOST, PORT,
+    RATE_LIMIT_PER_MINUTE, RATE_LIMIT_STRICT_PER_MINUTE,
+    SENTRY_DSN, SENTRY_RELEASE, SENTRY_ENVIRONMENT,
+)
+from app.middleware.rate_limit import RateLimitMiddleware
 from app.routers import covers, voices, payments, admin, users, utils
 
 # Setup Logging
@@ -12,10 +18,40 @@ logging.basicConfig(
 )
 logger = logging.getLogger("awaazify.main")
 
+# P2: Sentry error tracking. Optional — initialized ONLY when SENTRY_DSN is
+# set, and never allowed to crash the app when unset or misconfigured.
+if SENTRY_DSN:
+    try:
+        import sentry_sdk
+        sentry_sdk.init(
+            dsn=SENTRY_DSN,
+            release=SENTRY_RELEASE,
+            environment=SENTRY_ENVIRONMENT,
+            traces_sample_rate=0.0,  # error tracking only; no perf overhead
+            send_default_pii=False,
+        )
+        logger.info("Sentry error tracking enabled.")
+    except Exception as exc:  # never let telemetry break the app
+        logger.warning(f"Sentry init failed; continuing without it: {exc}")
+else:
+    logger.info("SENTRY_DSN not set; Sentry disabled.")
+
 app = FastAPI(
     title="Awaazify AI Audio Engine",
     description="Production-ready FastAPI backend for Awaazify AI Voice Studio SaaS",
     version="1.0.0"
+)
+
+# P2: rate limiting. Registered BEFORE CORSMiddleware so CORS stays outermost
+# and even 429 responses carry CORS headers the frontend can read.
+app.add_middleware(
+    RateLimitMiddleware,
+    requests_per_minute=RATE_LIMIT_PER_MINUTE,
+    strict_per_minute=RATE_LIMIT_STRICT_PER_MINUTE,
+)
+logger.info(
+    f"Rate limiting enabled: {RATE_LIMIT_PER_MINUTE}/min per IP on /api/*, "
+    f"{RATE_LIMIT_STRICT_PER_MINUTE}/min on login/sync + payment endpoints."
 )
 
 # Configure CORS

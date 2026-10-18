@@ -13,3 +13,4 @@ demucs>=4.0.1
 requests>=2.31.0
 python-multipart>=0.0.9
 httpx>=0.27.0
+sentry-sdk>=2.0.0
