@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import {
   AdminModelPayload,
   CustomVoiceTrainingJob,
@@ -37,6 +37,13 @@ function consumePostLoginView(): string | null {
 // SIGNED_IN (order varies). Memoize the consumed value per page load so both
 // route consistently to the same view.
 let resolvedPostLoginView: 'admin' | 'studio' | null = null;
+
+// True only when the user clicked a login button during THIS page load.
+// Supabase also emits SIGNED_IN when a backgrounded tab becomes visible or
+// when another tab's login syncs through shared storage — those must NOT
+// trigger post-login navigation. (OAuth itself always reloads the page, so a
+// genuine login return is handled by the hash-cleanup effect instead.)
+let loginInitiatedThisLoad = false;
 
 /** Admin logins return to the admin view; everything else lands on studio. */
 function resolvePostLoginView(): 'admin' | 'studio' {
@@ -448,27 +455,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     fetchVoiceModels();
 
-    // Tracks whether this page load has ever seen an authenticated session.
-    // Supabase re-emits SIGNED_IN when a backgrounded tab becomes visible
-    // again (session recovery / token refresh) — that must NOT navigate the
-    // user. Only the FIRST session of a page load (a genuine fresh login,
-    // which starts with no session) triggers post-login routing.
-    const sessionSeenRef = useRef(false);
-
     // Check existing auth session
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
-        sessionSeenRef.current = true;
         syncSupabaseUser(session.user);
       }
     });
 
     const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
       if (session?.user) {
-        const isFreshLogin = event === 'SIGNED_IN' && !sessionSeenRef.current;
-        sessionSeenRef.current = true;
         syncSupabaseUser(session.user);
-        if (isFreshLogin) {
+        // Navigate ONLY when the user actually clicked login in this page
+        // load. Visibility-triggered re-emits, reload recoveries, and
+        // cross-tab login syncs must leave the current view alone.
+        if (event === 'SIGNED_IN' && loginInitiatedThisLoad) {
+          loginInitiatedThisLoad = false;
           setActiveView(resolvePostLoginView());
         }
       } else {
@@ -530,7 +531,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Fresh login round-trip: reset the memoized destination, then record
     // where this login should land. A non-admin login also clears any stale
     // marker (e.g. an abandoned admin login) so it can't misroute later.
+    // Mark that THIS page load initiated a login, so the SIGNED_IN handler
+    // can tell a genuine login apart from background re-emits.
     resolvedPostLoginView = null;
+    loginInitiatedThisLoad = true;
     try {
       if (returnTo) {
         sessionStorage.setItem(POST_LOGIN_VIEW_KEY, returnTo);
