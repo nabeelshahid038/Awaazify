@@ -236,6 +236,29 @@ class SupabaseRestClient:
             data = res.json()
             return data[0] if isinstance(data, list) and data else record
 
+    def delete(self, table: str, match_column: str, match_value: Any) -> bool:
+        """DELETE rows where match_column == match_value. Returns True if at
+        least one row was deleted."""
+        if not self.is_configured():
+            items = self._mock_tables.get(table, [])
+            before = len(items)
+            self._mock_tables[table] = [
+                it for it in items if str(it.get(match_column)) != str(match_value)
+            ]
+            return len(self._mock_tables[table]) < before
+
+        try:
+            with httpx.Client(timeout=10.0) as client:
+                headers = dict(self.headers)
+                params = {match_column: f"eq.{match_value}"}
+                res = client.delete(f"{self.rest_url}/{table}", headers=headers, params=params)
+                res.raise_for_status()
+                data = res.json()
+                return bool(data) if isinstance(data, list) else True
+        except Exception as e:
+            logger.error(f"Error deleting from {table}: {e}")
+            return False
+
     def upload_file(self, bucket: str, path: str, file_bytes: bytes, content_type: str = "audio/mpeg") -> Optional[str]:
         if not self.is_configured():
             return f"{self.base_url}/storage/v1/object/public/{bucket}/{path}"

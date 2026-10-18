@@ -57,6 +57,42 @@ def create_admin_voice_model(payload: AdminModelPayload, admin: dict = Depends(r
 def list_all_voice_models(admin: dict = Depends(require_admin)):
     return db.select("voice_models")
 
+
+@router.delete("/models/{model_id}")
+def delete_admin_voice_model(model_id: str, admin: dict = Depends(require_admin)):
+    """Permanently delete a voice model from the catalog (admin only)."""
+    logger.info(f"Admin {admin['id']} deleting voice model: id={model_id}")
+    deleted = db.delete("voice_models", "id", model_id)
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Voice model not found.",
+        )
+    return {"modelId": model_id, "status": "success", "message": "Voice model deleted."}
+
+
+@router.patch("/models/{model_id}")
+def update_admin_voice_model(
+    model_id: str, payload: dict, admin: dict = Depends(require_admin)
+):
+    """Update a voice model's status (Active / Coming Soon / Hidden)."""
+    new_status = (payload or {}).get("status")
+    if new_status not in ("Active", "Coming Soon", "Hidden"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="status must be one of: Active, Coming Soon, Hidden.",
+        )
+    existing = db.select("voice_models", {"id": f"eq.{model_id}"})
+    if not existing:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Voice model not found.",
+        )
+    logger.info(f"Admin {admin['id']} setting voice model {model_id} status={new_status}")
+    db.update("voice_models", "id", model_id, {"status": new_status})
+    return {"modelId": model_id, "status": new_status}
+
+
 @router.post("/payments/{paymentId}/approve")
 def approve_payment(paymentId: str, admin: dict = Depends(require_admin)):
     logger.info(f"Admin {admin['id']} approving payment {paymentId}")

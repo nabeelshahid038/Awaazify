@@ -220,8 +220,8 @@ interface AppContextValue {
   // Voice Models
   voiceModels: VoiceModel[];
   addAdminVoiceModel: (payload: AdminModelPayload) => Promise<void>;
-  toggleVoiceModelStatus: (id: string) => void;
-  deleteVoiceModel: (id: string) => void;
+  toggleVoiceModelStatus: (id: string) => Promise<void>;
+  deleteVoiceModel: (id: string) => Promise<void>;
 
   // Generated Songs & Retry
   generatedSongs: GeneratedSong[];
@@ -657,22 +657,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const toggleVoiceModelStatus = (id: string) => {
+  const toggleVoiceModelStatus = async (id: string): Promise<void> => {
+    const current = voiceModels.find((m) => m.id === id);
+    const nextStatus =
+      current?.status === 'Active'
+        ? 'Coming Soon'
+        : current?.status === 'Coming Soon'
+        ? 'Hidden'
+        : 'Active';
+    // Persist server-side for real models; demo models (vm-*) are local-only.
+    if (current && !id.startsWith('vm-')) {
+      await awaazifyApi.updateAdminVoiceModelStatus(id, nextStatus);
+    }
     setVoiceModels((prev) =>
-      prev.map((m) => {
-        if (m.id !== id) return m;
-        const nextStatus =
-          m.status === 'Active'
-            ? 'Coming Soon'
-            : m.status === 'Coming Soon'
-            ? 'Hidden'
-            : 'Active';
-        return { ...m, status: nextStatus };
-      })
+      prev.map((m) => (m.id === id ? { ...m, status: nextStatus } : m))
     );
   };
 
-  const deleteVoiceModel = (id: string) => {
+  const deleteVoiceModel = async (id: string): Promise<void> => {
+    // Demo models (vm-*) exist only in local state — nothing to delete server-side.
+    // Real models go through the admin API so the deletion persists in the DB.
+    if (!id.startsWith('vm-')) {
+      await awaazifyApi.deleteAdminVoiceModel(id);
+    }
     setVoiceModels((prev) => prev.filter((m) => m.id !== id));
   };
 

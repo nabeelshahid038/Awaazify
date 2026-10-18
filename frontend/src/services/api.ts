@@ -216,6 +216,49 @@ export const awaazifyApi = {
   },
 
   /**
+   * DELETE /api/v1/admin/models/{modelId}
+   * Permanently removes a voice model from the catalog (admin only).
+   */
+  async deleteAdminVoiceModel(modelId: string): Promise<void> {
+    console.info(`[API] DELETE ${API_BASE_URL}/api/v1/admin/models/${modelId}`);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/v1/admin/models/${modelId}`, {
+        method: 'DELETE',
+        headers: await authHeaders(),
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || `Model deletion error: ${response.status}`);
+      }
+    } catch (err: any) {
+      console.error(`[API] Admin model deletion failed:`, err);
+      throw new Error(err.message || 'Model deletion failed. Please try again.');
+    }
+  },
+
+  /**
+   * PATCH /api/v1/admin/models/{modelId}
+   * Updates a voice model's status (admin only).
+   */
+  async updateAdminVoiceModelStatus(modelId: string, status: string): Promise<void> {
+    console.info(`[API] PATCH ${API_BASE_URL}/api/v1/admin/models/${modelId}`, { status });
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/v1/admin/models/${modelId}`, {
+        method: 'PATCH',
+        headers: await authHeaders(),
+        body: JSON.stringify({ status }),
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || `Model update error: ${response.status}`);
+      }
+    } catch (err: any) {
+      console.error(`[API] Admin model status update failed:`, err);
+      throw new Error(err.message || 'Model update failed. Please try again.');
+    }
+  },
+
+  /**
    * POST /api/v1/admin/payments/{paymentId}/approve
    */
   async approvePayment(paymentId: string): Promise<void> {
