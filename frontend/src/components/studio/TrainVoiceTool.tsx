@@ -181,11 +181,22 @@ export const TrainVoiceTool: React.FC = () => {
       ...uploadedFileUrls,
     ];
 
-    await submitCustomVoiceTraining({
-      voiceName: customVoiceName.trim(),
-      audioFileNames: files,
-      totalDurationSec: totalAudioSeconds,
-    });
+    try {
+      await submitCustomVoiceTraining({
+        voiceName: customVoiceName.trim(),
+        audioFileNames: files,
+        totalDurationSec: totalAudioSeconds,
+      });
+    } catch (err: any) {
+      // P0: the backend call failed — the training job was NOT recorded.
+      // Surface the error instead of showing a fake success message.
+      setIsSubmitting(false);
+      setSuccessMsg('');
+      setErrorMsg(
+        err?.message || 'Voice training request failed. Please try again.'
+      );
+      return;
+    }
 
     setIsSubmitting(false);
     setSuccessMsg(

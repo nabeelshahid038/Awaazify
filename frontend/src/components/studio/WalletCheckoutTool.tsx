@@ -1,6 +1,5 @@
 import React, { useState, useRef } from 'react';
 import {
-  CreditCard,
   Copy,
   Check,
   Upload,
@@ -45,7 +44,6 @@ export const WalletCheckoutTool: React.FC = () => {
     formattedBalance,
     transactions,
     submitLocalPaymentRequest,
-    submitGlobalPayment,
   } = useApp();
 
   const [selectedPkgId, setSelectedPkgId] = useState<'song-50' | 'voice-150'>(
@@ -65,11 +63,9 @@ export const WalletCheckoutTool: React.FC = () => {
   const [isSubmittingPk, setIsSubmittingPk] = useState<boolean>(false);
   const screenshotInputRef = useRef<HTMLInputElement | null>(null);
 
-  // USD Mode State (Card / Apple Pay / Google Pay)
-  const [cardHolder, setCardHolder] = useState<string>('Studio Creator');
-  const [cardNumber, setCardNumber] = useState<string>('4242 •••• •••• 4242');
-  const [isSubmittingGlobal, setIsSubmittingGlobal] = useState<boolean>(false);
-  const [globalSuccess, setGlobalSuccess] = useState<string>('');
+  // P0: card / Apple Pay / Google Pay checkout is DISABLED until a real
+  // payment processor (e.g. Stripe) is integrated. The previous form minted
+  // "Approved" credits with a fake test card number and no processor.
 
   const selectedPkg =
     TWO_SIMPLE_PACKAGES.find((p) => p.id === selectedPkgId) ||
@@ -120,23 +116,6 @@ export const WalletCheckoutTool: React.FC = () => {
     setScreenshotName('');
     setScreenshotFile(null);
     setPkSuccess('Payment submitted! Your package will be activated within 2 minutes.');
-  };
-
-  const handleGlobalSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setGlobalSuccess('');
-    setIsSubmittingGlobal(true);
-
-    await submitGlobalPayment({
-      packageId: selectedPkg.id,
-      packageName: selectedPkg.titleUsd,
-      songsAdded: selectedPkg.songsAdded,
-      voicePassAdded: selectedPkg.voicePassAdded,
-      amountUsd: selectedPkg.usd,
-    });
-
-    setIsSubmittingGlobal(false);
-    setGlobalSuccess('Payment complete! Your package and balance are active now.');
   };
 
   return (
@@ -399,66 +378,38 @@ export const WalletCheckoutTool: React.FC = () => {
           </button>
         </form>
       ) : (
-        /* USD CARD / APPLE PAY / GOOGLE PAY CHECKOUT */
-        <form
-          onSubmit={handleGlobalSubmit}
-          className="rounded-3xl bg-white border border-slate-200/90 shadow-2xs p-5 sm:p-7 space-y-6"
-        >
+        /* P0: USD CARD / APPLE PAY / GOOGLE PAY — DISABLED until a real payment
+           processor is integrated. No credits may be minted without one. */
+        <div className="rounded-3xl bg-white border border-slate-200/90 shadow-2xs p-5 sm:p-7 space-y-5 opacity-90">
           <div className="pb-4 border-b border-slate-100">
-            <span className="text-xs font-extrabold text-[#059669] uppercase">
-              Instant Card / Apple Pay / Google Pay
+            <span className="text-xs font-extrabold text-slate-400 uppercase">
+              Card / Apple Pay / Google Pay
             </span>
             <h2 className="text-lg sm:text-xl font-extrabold text-[#0F172A] mt-0.5">
-              Pay ${selectedPkg.usd} USD — Instant Activation
+              Card payments coming soon
             </h2>
+            <p className="text-xs sm:text-sm text-slate-600 font-medium mt-2 leading-relaxed">
+              Instant USD card checkout is not available yet — we are integrating
+              a secure payment processor. Please switch to{' '}
+              <button
+                type="button"
+                onClick={() => setRegionMode('PK')}
+                className="font-extrabold text-[#059669] hover:underline cursor-pointer"
+              >
+                PKR (Rs)
+              </button>{' '}
+              and top up with EasyPaisa or JazzCash instead.
+            </p>
           </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                Cardholder Name
-              </label>
-              <input
-                type="text"
-                required
-                value={cardHolder}
-                onChange={(e) => setCardHolder(e.target.value)}
-                className="w-full px-4 py-3 rounded-2xl bg-slate-50 border border-slate-200 text-sm font-bold text-[#0F172A]"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                Card Number
-              </label>
-              <input
-                type="text"
-                required
-                value={cardNumber}
-                onChange={(e) => setCardNumber(e.target.value)}
-                className="w-full px-4 py-3 rounded-2xl bg-slate-50 border border-slate-200 text-sm font-mono font-bold text-[#0F172A]"
-              />
-            </div>
-          </div>
-
-          {globalSuccess && (
-            <div className="p-4 rounded-2xl bg-emerald-50 border border-[#10B981] text-xs sm:text-sm font-extrabold text-[#059669]">
-              {globalSuccess}
-            </div>
-          )}
 
           <button
-            type="submit"
-            disabled={isSubmittingGlobal}
-            className="w-full py-4 px-6 rounded-2xl bg-[#10B981] hover:bg-[#059669] text-white font-extrabold text-sm sm:text-base shadow-md transition-all cursor-pointer flex items-center justify-center gap-2"
+            type="button"
+            disabled
+            className="w-full py-4 px-6 rounded-2xl bg-slate-200 text-slate-400 font-extrabold text-sm sm:text-base cursor-not-allowed"
           >
-            <CreditCard className="w-5 h-5" />
-            <span>
-              {isSubmittingGlobal
-                ? 'Processing...'
-                : `Pay $${selectedPkg.usd} & Activate Instantly`}
-            </span>
+            {`Pay $${selectedPkg.usd} — Coming Soon`}
           </button>
-        </form>
+        </div>
       )}
 
       {/* Payment History */}

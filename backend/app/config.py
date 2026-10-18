@@ -25,3 +25,10 @@ HOST = os.getenv("HOST", "0.0.0.0")
 # External GPU Worker (Modal.com or Google Colab Cloudflare Tunnel)
 GPU_WORKER_URL = os.getenv("GPU_WORKER_URL", "").rstrip("/")
 GPU_WORKER_API_KEY = os.getenv("GPU_WORKER_API_KEY", "")
+
+# Dedicated, limited-scope Supabase key for the external GPU worker.
+# SECURITY (P0): the backend's SERVICE_ROLE key must NEVER be sent to the
+# worker. Create a separate key with the minimum scope the worker needs
+# (e.g. a restricted Supabase API key) and set it here / on Railway as
+# GPU_WORKER_SUPABASE_KEY. Backend code fails loudly if it is unset.
+GPU_WORKER_SUPABASE_KEY = os.getenv("GPU_WORKER_SUPABASE_KEY", "")

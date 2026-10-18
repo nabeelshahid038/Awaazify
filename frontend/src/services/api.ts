@@ -15,6 +15,24 @@ const API_BASE_URL =
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/**
+ * P0: attach the caller's Supabase access JWT to every backend request.
+ * The backend verifies this token server-side on every route (401 otherwise).
+ */
+async function authHeaders(): Promise<Record<string, string>> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  try {
+    const { data } = await supabase.auth.getSession();
+    const token = data.session?.access_token;
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+  } catch {
+    // No session — the backend will answer 401 and the UI surfaces the error.
+  }
+  return headers;
+}
+
 export const awaazifyApi = {
   /**
    * Upload file to Supabase Storage Bucket
@@ -67,9 +85,7 @@ export const awaazifyApi = {
 
       const response = await fetch(`${API_BASE_URL}/api/v1/covers/generate`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: await authHeaders(),
         body: JSON.stringify(payload),
       });
 
@@ -112,9 +128,7 @@ export const awaazifyApi = {
     try {
       const response = await fetch(`${API_BASE_URL}/api/v1/voices/train`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: await authHeaders(),
         body: JSON.stringify(payload),
       });
 
@@ -129,11 +143,10 @@ export const awaazifyApi = {
         estimatedMinutes: data.estimatedMinutes || 5,
       };
     } catch (err: any) {
-      console.warn(`[API] Voice training call fallback: ${err.message}`);
-      return {
-        trainingJobId: `voice_${Date.now().toString(36)}`,
-        estimatedMinutes: 5,
-      };
+      // P0: no more silent fake-success fallbacks — surface the error so the
+      // user knows their training request was NOT recorded.
+      console.error(`[API] Voice training failed:`, err);
+      throw new Error(err.message || 'Voice training request failed. Please try again.');
     }
   },
 
@@ -148,9 +161,7 @@ export const awaazifyApi = {
     try {
       const response = await fetch(`${API_BASE_URL}/api/v1/payments/local-verify`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: await authHeaders(),
         body: JSON.stringify(payload),
       });
 
@@ -165,11 +176,10 @@ export const awaazifyApi = {
         status: 'Pending',
       };
     } catch (err: any) {
-      console.warn(`[API] Local payment call fallback: ${err.message}`);
-      return {
-        paymentId: `pay_${Date.now().toString(36)}`,
-        status: 'Pending',
-      };
+      // P0: no more silent fake-success fallbacks — surface the error so the
+      // user knows their payment was NOT recorded.
+      console.error(`[API] Local payment submission failed:`, err);
+      throw new Error(err.message || 'Payment submission failed. Please try again.');
     }
   },
 
@@ -184,9 +194,7 @@ export const awaazifyApi = {
     try {
       const response = await fetch(`${API_BASE_URL}/api/v1/admin/models`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: await authHeaders(),
         body: JSON.stringify(payload),
       });
 
@@ -201,11 +209,9 @@ export const awaazifyApi = {
         createdAt: new Date().toISOString(),
       };
     } catch (err: any) {
-      console.warn(`[API] Admin model creation fallback: ${err.message}`);
-      return {
-        modelId: `vm_${Date.now().toString(36)}`,
-        createdAt: new Date().toISOString(),
-      };
+      // P0: no more silent fake-success fallbacks — surface the error.
+      console.error(`[API] Admin model creation failed:`, err);
+      throw new Error(err.message || 'Model creation failed. Please try again.');
     }
   },
 
@@ -213,12 +219,13 @@ export const awaazifyApi = {
    * POST /api/v1/admin/payments/{paymentId}/approve
    */
   async approvePayment(paymentId: string): Promise<void> {
-    try {
-      await fetch(`${API_BASE_URL}/api/v1/admin/payments/${paymentId}/approve`, {
-        method: 'POST',
-      });
-    } catch (err) {
-      console.warn('[API] Approve payment error:', err);
+    const res = await fetch(`${API_BASE_URL}/api/v1/admin/payments/${paymentId}/approve`, {
+      method: 'POST',
+      headers: await authHeaders(),
+    });
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      throw new Error(errorData.detail || `Approve failed: ${res.status}`);
     }
   },
 
@@ -226,12 +233,13 @@ export const awaazifyApi = {
    * POST /api/v1/admin/payments/{paymentId}/reject
    */
   async rejectPayment(paymentId: string): Promise<void> {
-    try {
-      await fetch(`${API_BASE_URL}/api/v1/admin/payments/${paymentId}/reject`, {
-        method: 'POST',
-      });
-    } catch (err) {
-      console.warn('[API] Reject payment error:', err);
+    const res = await fetch(`${API_BASE_URL}/api/v1/admin/payments/${paymentId}/reject`, {
+      method: 'POST',
+      headers: await authHeaders(),
+    });
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      throw new Error(errorData.detail || `Reject failed: ${res.status}`);
     }
   },
 
@@ -242,17 +250,19 @@ export const awaazifyApi = {
     jobId: string,
     payload: { modelFileUrl: string; indexFileUrl?: string; demoAudioUrl?: string }
   ): Promise<{ voiceModelId: string }> {
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/v1/admin/training-jobs/${jobId}/publish`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json();
-      return { voiceModelId: data.voiceModelId };
-    } catch (err) {
-      console.warn('[API] Publish trained voice error:', err);
-      return { voiceModelId: `vm_custom_${Date.now().toString(36)}` };
+    const res = await fetch(`${API_BASE_URL}/api/v1/admin/training-jobs/${jobId}/publish`, {
+      method: 'POST',
+      headers: await authHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      throw new Error(errorData.detail || `Publish failed: ${res.status}`);
     }
+    const data = await res.json();
+    if (!data.voiceModelId) {
+      throw new Error('Publish failed: server did not return a voice model id.');
+    }
+    return { voiceModelId: data.voiceModelId };
   },
 };
