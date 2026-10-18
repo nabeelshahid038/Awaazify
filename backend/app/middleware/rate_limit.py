@@ -4,20 +4,26 @@ In-memory sliding-window rate limiter (P2 hardening).
 Dependency-free: no Redis, no extra packages. Each worker process keeps its
 own counters, which is fine for this app's traffic profile.
 
-- Keyed by client IP + request path.
+- Keyed by authenticated user id + request path when a Bearer token is
+  present (stable per account even when the client IP rotates behind
+  proxies — observed on Railway where each request arrives from a different
+  internal IP); falls back to client IP + path for unauthenticated requests.
 - Applies to /api/* routes only (health/docs/root are exempt).
-- Default budget: ``requests_per_minute`` per IP+path per 60s sliding window.
+- Default budget: ``requests_per_minute`` per key per 60s sliding window.
 - Abuse-sensitive endpoints (login/sync, payments) get a stricter budget.
 - Over the budget -> HTTP 429 JSON with a ``Retry-After`` header (seconds).
 
-Client IP honors X-Forwarded-For (first entry) because the app runs behind
-Railway's proxy; falls back to the direct peer address.
+The JWT ``sub`` is only *decoded*, never trusted here — real verification
+happens later in the route's auth dependency. A forged token still gets a
+cheap 401; only genuine per-account usage consumes the budget.
 """
+import base64
+import json
 import logging
 import threading
 import time
 from collections import deque
-from typing import Deque, Dict, Tuple
+from typing import Deque, Dict, Optional, Tuple
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -60,6 +66,35 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         return request.client.host if request.client else "unknown"
 
     @staticmethod
+    def _jwt_sub(request: Request) -> Optional[str]:
+        """Extract the ``sub`` claim from a Bearer token WITHOUT verifying.
+
+        Verification happens later in the route's auth dependency; here the
+        sub is only a stable rate-limit key. Returns None when absent or
+        undecodable.
+        """
+        auth = request.headers.get("authorization", "")
+        if not auth.lower().startswith("bearer "):
+            return None
+        token = auth[7:].strip()
+        parts = token.split(".")
+        if len(parts) != 3:
+            return None
+        try:
+            payload_b64 = parts[1] + "=" * (-len(parts[1]) % 4)
+            payload = json.loads(base64.urlsafe_b64decode(payload_b64).decode("utf-8"))
+            sub = payload.get("sub")
+            return str(sub) if sub else None
+        except Exception:
+            return None
+
+    def _request_key(self, request: Request, path: str) -> str:
+        sub = self._jwt_sub(request)
+        if sub:
+            return f"user:{sub}:{path}"
+        return f"ip:{self._client_ip(request)}:{path}"
+
+    @staticmethod
     def _is_strict(path: str) -> bool:
         return any(path.startswith(prefix) for prefix in STRICT_PREFIXES)
 
@@ -83,7 +118,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         limit = self.strict_limit if self._is_strict(path) else self.default_limit
-        key = f"{self._client_ip(request)}:{path}"
+        key = self._request_key(request, path)
         now = time.monotonic()
 
         with self._lock:
@@ -96,7 +131,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             if len(dq) >= limit:
                 retry_after = max(1, int(dq[0] + WINDOW_SECONDS - now) + 1)
                 logger.warning(
-                    f"Rate limit exceeded: ip={key.split(':')[0]} path={path} "
+                    f"Rate limit exceeded: key={key} "
                     f"limit={limit}/min"
                 )
                 response = JSONResponse(
