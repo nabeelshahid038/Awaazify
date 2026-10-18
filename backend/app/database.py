@@ -111,7 +111,17 @@ class SupabaseRestClient:
         # fake-success caused "added but disappeared on refresh" bugs.
         with httpx.Client(timeout=10.0) as client:
             res = client.post(f"{self.rest_url}/{table}", headers=self.headers, json=record)
-            res.raise_for_status()
+            try:
+                res.raise_for_status()
+            except httpx.HTTPStatusError as e:
+                # Include Supabase's error body (e.g. "column 'x' does not exist")
+                # so Railway logs show the actual cause, not just "400 Bad Request".
+                body = res.text[:500]
+                raise httpx.HTTPStatusError(
+                    f"{e} | Supabase says: {body}",
+                    request=e.request,
+                    response=e.response,
+                )
             data = res.json()
             return data[0] if isinstance(data, list) and data else record
 
@@ -231,7 +241,15 @@ class SupabaseRestClient:
 
         with httpx.Client(timeout=10.0) as client:
             res = client.post(f"{self.rest_url}/{table}", headers=self.headers, json=record)
-            res.raise_for_status()
+            try:
+                res.raise_for_status()
+            except httpx.HTTPStatusError as e:
+                body = res.text[:500]
+                raise httpx.HTTPStatusError(
+                    f"{e} | Supabase says: {body}",
+                    request=e.request,
+                    response=e.response,
+                )
             data = res.json()
             return data[0] if isinstance(data, list) and data else record
 
