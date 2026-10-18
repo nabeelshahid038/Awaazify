@@ -89,7 +89,7 @@ export const PublicPricing: React.FC = () => {
             onClick={() => requireAuthAndNavigate('song-cover')}
             className="px-5 py-2.5 rounded-2xl bg-[#0F172A] hover:bg-slate-800 text-white text-xs font-extrabold whitespace-nowrap shrink-0 cursor-pointer self-start sm:self-auto"
           >
-            Try Free 30s Preview →
+            Try 1 Free Song →
           </button>
         </div>
 

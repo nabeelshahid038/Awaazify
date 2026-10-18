@@ -95,7 +95,7 @@ export const PublicHowItWorks: React.FC = () => {
               Preview Any 30-Second Chorus for Free
             </h2>
             <p className="text-xs sm:text-sm text-slate-600 font-medium leading-relaxed">
-              Skip slow song intros and slide the 30-second window directly to the main chorus for your free trial preview, or unlock the full track anytime.
+              Skip slow song intros and jump straight to the chorus for your free song, or add credit for more covers anytime.
             </p>
           </div>
 

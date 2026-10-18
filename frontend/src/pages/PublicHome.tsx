@@ -137,7 +137,7 @@ export const PublicHome: React.FC = () => {
 
               {/* Trust Strip */}
               <div className="pt-1 flex flex-wrap items-center gap-y-1.5 text-xs sm:text-sm text-slate-600 font-bold">
-                <span>✓ 1 Free 30s Preview</span>
+                <span>✓ 1 Free Song</span>
                 <span className="mx-2.5 text-slate-300" aria-hidden="true">
                   ·
                 </span>
