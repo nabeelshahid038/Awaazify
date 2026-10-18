@@ -48,6 +48,7 @@ app.include_router(payments.router)
 app.include_router(admin.router)
 
 @app.get("/")
+@app.get("/api")
 def root():
     return {
         "platform": "Awaazify AI Audio Engine",
@@ -57,6 +58,7 @@ def root():
     }
 
 @app.get("/health")
+@app.get("/api/health")
 def health():
     return {"status": "healthy"}
 

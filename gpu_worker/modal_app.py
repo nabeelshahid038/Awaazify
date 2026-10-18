@@ -18,7 +18,7 @@ models_volume = modal.Volume.from_name("awaazify-models-vol", create_if_missing=
 CACHE_DIR = "/models_cache"
 
 # 2. Define Container Image with System & Python Dependencies
-image = (
+app_image = (
     modal.Image.debian_slim(python_version="3.10")
     .apt_install("ffmpeg", "git", "curl", "wget")
     .pip_install(
@@ -40,7 +40,7 @@ image = (
     )
 )
 
-app = modal.App("awaazify-gpu-worker", image=image)
+app = modal.App("awaazify-gpu-worker", image=app_image)
 
 # 3. Request / Response Pydantic Schemas
 class CoverProcessRequest(BaseModel):
@@ -119,10 +119,11 @@ def upload_to_supabase(
 # 5. Core GPU Endpoints
 @app.function(
     gpu="T4",
-    volumes={CACHE_DIR: models_volume},
+    image=app_image,
+    volumes={"/models_cache": models_volume},
     timeout=600,
 )
-@modal.web_endpoint(method="POST")
+@modal.fastapi_endpoint(method="POST")
 def process_cover(payload: CoverProcessRequest) -> CoverProcessResponse:
     import httpx
     import numpy as np
@@ -274,9 +275,10 @@ def process_cover(payload: CoverProcessRequest) -> CoverProcessResponse:
 
 @app.function(
     gpu="T4",
+    image=app_image,
     timeout=600,
 )
-@modal.web_endpoint(method="POST")
+@modal.fastapi_endpoint(method="POST")
 def clean_training_dataset(payload: CleanDatasetRequest) -> CleanDatasetResponse:
     import httpx
     import noisereduce as nr
