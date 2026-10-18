@@ -84,6 +84,7 @@ interface AppContextValue {
 
   // Voice Models
   voiceModels: VoiceModel[];
+  refreshAdminVoiceModels: () => Promise<void>;
   addAdminVoiceModel: (payload: AdminModelPayload) => Promise<void>;
   toggleVoiceModelStatus: (id: string) => Promise<void>;
   deleteVoiceModel: (id: string) => Promise<void>;
@@ -474,41 +475,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const addAdminVoiceModel = async (payload: AdminModelPayload) => {
     const res = await awaazifyApi.createAdminVoiceModel(payload);
-    const newModel: VoiceModel = {
-      id: res.modelId,
-      name: payload.name,
-      subtitle: payload.subtitle,
-      category: payload.category as any,
-      usageCount: 1,
-      avatarConfig: payload.avatarConfig as any,
-      modelFileName: payload.modelFileName,
-      extraFileName: payload.extraFileName,
-      modelFileUrl: payload.modelFileUrl,
-      indexFileUrl: payload.indexFileUrl,
-      defaultPitch: payload.defaultPitch,
-      previewAudioUrl: payload.previewAudioUrl,
-      status: payload.status,
-      featured: true,
-    };
-    setVoiceModels((prev) => [newModel, ...prev]);
+    // Refresh from backend to get the canonical list (bypasses anon RLS issues)
+    await refreshAdminVoiceModels();
+  };
 
-    if (isSupabaseConfigured) {
-      await supabase.from('voice_models').insert({
-        id: res.modelId,
-        name: payload.name,
-        subtitle: payload.subtitle,
-        category: payload.category,
-        usage_count: 0,
-        avatar_config: payload.avatarConfig,
-        model_file_name: payload.modelFileName,
-        extra_file_name: payload.extraFileName,
-        model_file_url: payload.modelFileUrl,
-        index_file_url: payload.indexFileUrl,
-        default_pitch: payload.defaultPitch,
-        preview_audio_url: payload.previewAudioUrl,
-        status: payload.status,
-        featured: true,
-      });
+  const refreshAdminVoiceModels = async (): Promise<void> => {
+    try {
+      const data = await awaazifyApi.listAdminVoiceModels();
+      if (data && data.length > 0) {
+        const mapped: VoiceModel[] = data.map((d: any) => ({
+          id: d.id,
+          name: d.name,
+          subtitle: d.subtitle,
+          category: d.category,
+          usageCount: d.usage_count || 0,
+          avatarConfig: d.avatar_config || {
+            silhouetteType: 'vocalist',
+            gradientTheme: 'emerald',
+            baseFreqHz: 220,
+          },
+          modelFileName: d.model_file_name || `${d.name.toLowerCase().replace(/ /g, '_')}.pth`,
+          extraFileName: d.extra_file_name || `${d.name.toLowerCase().replace(/ /g, '_')}.index`,
+          modelFileUrl: d.model_file_url,
+          indexFileUrl: d.index_file_url,
+          defaultPitch: d.default_pitch || 0,
+          status: d.status || 'Active',
+          isCustom: d.is_custom || false,
+          ownerUserId: d.owner_user_id,
+          featured: d.featured || false,
+        }));
+        setVoiceModels(mapped);
+      } else {
+        setVoiceModels([]);
+      }
+    } catch (err) {
+      console.warn('Failed to refresh admin voice models:', err);
     }
   };
 
@@ -827,6 +828,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         refreshWallet,
         addWalletPackage,
         voiceModels,
+        refreshAdminVoiceModels,
         addAdminVoiceModel,
         toggleVoiceModelStatus,
         deleteVoiceModel,

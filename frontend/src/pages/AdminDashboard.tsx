@@ -31,6 +31,7 @@ export const AdminDashboard: React.FC = () => {
     loginWithGoogle,
     logoutUser,
     voiceModels,
+    refreshAdminVoiceModels,
     addAdminVoiceModel,
     toggleVoiceModelStatus,
     deleteVoiceModel,
@@ -76,6 +77,13 @@ export const AdminDashboard: React.FC = () => {
       cancelled = true;
     };
   }, [isAuthenticated]);
+
+  // Load voice models from backend (service role, bypasses anon RLS) when admin is verified
+  useEffect(() => {
+    if (adminCheck === 'allowed') {
+      refreshAdminVoiceModels();
+    }
+  }, [adminCheck]);
 
   const handleGoogleContinue = async () => {
     setGateError('');
