@@ -159,7 +159,7 @@ export const MySongsLibrary: React.FC = () => {
               No Songs Generated Yet
             </h3>
             <p className="text-xs sm:text-sm text-slate-600 font-medium max-w-md mx-auto">
-              Create your first 30-second song preview or full-length cover and it will appear here.
+              Create your first free song cover and it will appear here.
             </p>
           </div>
           <button
@@ -188,7 +188,7 @@ export const MySongsLibrary: React.FC = () => {
                         {song.title}
                       </h3>
                       <span className="text-xs font-extrabold text-[#059669]">
-                        · {song.isTrialPreview ? '30s Preview' : 'Full Song'}
+                        · {song.isTrialPreview ? 'Free Song' : 'Full Song'}
                       </span>
                     </div>
                     <p className="text-xs text-slate-500 font-bold truncate">

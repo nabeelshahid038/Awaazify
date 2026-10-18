@@ -9,11 +9,6 @@ interface YouTubeTrimmerModalProps {
   youtubeUrl: string;
   onClose: () => void;
   onConfirm: (selection: TrimmedYouTubeSelection) => void;
-  // P1: real metadata when the caller fetched it via /api/v1/utils/youtube-meta.
-  // All optional — sensible placeholders are used when absent.
-  videoTitle?: string;
-  channelName?: string;
-  totalDurationSec?: number;
 }
 
 export const formatTimecode = (seconds: number): string => {
@@ -33,18 +28,10 @@ export const YouTubeTrimmerModal: React.FC<YouTubeTrimmerModalProps> = ({
   youtubeUrl,
   onClose,
   onConfirm,
-  videoTitle: videoTitleProp,
-  channelName: channelNameProp,
-  totalDurationSec: totalDurationSecProp,
 }) => {
   const { wallet, regionMode, setStudioTool } = useApp();
   const isTrialMode = wallet.credits === 0;
-  // P1: use the real video duration when the caller provides one;
-  // fall back to 04:00 (the metadata endpoint does not return duration yet).
-  const totalDurationSec =
-    totalDurationSecProp && totalDurationSecProp > 0
-      ? Math.round(totalDurationSecProp)
-      : 240;
+  const totalDurationSec = 240; // 04:00 song length
 
   const [startSec, setStartSec] = useState<number>(60);
   const [endSec, setEndSec] = useState<number>(90);
@@ -69,9 +56,7 @@ export const YouTubeTrimmerModal: React.FC<YouTubeTrimmerModalProps> = ({
 
   if (!isOpen) return null;
 
-  // P1: real YouTube title/author when provided; placeholder otherwise.
-  const videoTitle = videoTitleProp || 'Selected YouTube Track';
-  const channelName = channelNameProp || 'YouTube Audio';
+  const videoTitle = 'Selected YouTube Track';
 
   const handleStartChange = (newStart: number) => {
     if (isTrialMode) {
@@ -126,7 +111,7 @@ export const YouTubeTrimmerModal: React.FC<YouTubeTrimmerModalProps> = ({
     onConfirm({
       youtubeUrl,
       videoTitle,
-      channelName,
+      channelName: 'YouTube Audio',
       totalDurationSec,
       startTimeSec: convertFullTrack ? 0 : startSec,
       endTimeSec: convertFullTrack ? totalDurationSec : endSec,
@@ -155,9 +140,6 @@ export const YouTubeTrimmerModal: React.FC<YouTubeTrimmerModalProps> = ({
               <h3 className="text-base sm:text-lg font-extrabold text-[#0F172A] truncate">
                 Select Song Segment
               </h3>
-              <p className="text-xs text-slate-500 font-medium mt-0.5 truncate">
-                {videoTitle} · {channelName}
-              </p>
               <p className="text-xs text-slate-500 font-medium mt-0.5">
                 Total Length: 00:00 — {formatTimecode(totalDurationSec)}
               </p>
@@ -176,11 +158,11 @@ export const YouTubeTrimmerModal: React.FC<YouTubeTrimmerModalProps> = ({
           </button>
         </div>
 
-        {/* Mode Banner: Free Trial 30s vs Paid Full Song */}
+        {/* Mode Banner: Free Song vs Paid */}
         {isTrialMode ? (
           <div className="mt-4 p-4 rounded-2xl bg-[#FEF3C7]/80 border border-amber-300 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="text-xs sm:text-sm text-amber-950 font-semibold leading-relaxed">
-              Free Trial: Select any 30-second segment. Unlock full-length songs for {singleSongPrice}.
+              Free Song: Your first cover is free. Add {singleSongPrice} to your Wallet for more songs.
             </div>
             <button
               type="button"

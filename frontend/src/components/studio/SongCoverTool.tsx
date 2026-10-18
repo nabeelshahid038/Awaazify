@@ -126,12 +126,12 @@ export const SongCoverTool: React.FC = () => {
       return;
     }
 
-    const isTrialJob = wallet.credits === 0;
+    const isTrialJob = wallet.hasFreeTrial;
     const allowed = consumeSongPassOrTrial(isTrialJob);
 
     if (!allowed) {
       setStatusNotice(
-        `Your free 30-second preview has been used. Unlock full-length songs for ${singleSongPrice} in your Wallet.`
+        `Your free song has been used. Add ${singleSongPrice} to your Wallet for more songs.`
       );
       return;
     }
@@ -352,7 +352,7 @@ export const SongCoverTool: React.FC = () => {
             </span>
           ) : (
             <span className="text-amber-800">
-              Balance: {formattedBalance} · Free 30s Preview Ready
+              Balance: {formattedBalance} · 1 Free Song
             </span>
           )}
         </div>
@@ -736,7 +736,7 @@ export const SongCoverTool: React.FC = () => {
             {activeOutputSong.isTrialPreview && (
               <div className="p-4 rounded-2xl bg-[#FEF3C7] border border-amber-300 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <p className="text-xs sm:text-sm text-amber-950 font-extrabold">
-                  Enjoyed your 30-second preview? Unlock full-length songs for {singleSongPrice}.
+                  Enjoyed your free song? Add {singleSongPrice} to your Wallet for more.
                 </p>
                 <button
                   type="button"
