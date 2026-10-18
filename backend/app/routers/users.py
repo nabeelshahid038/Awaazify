@@ -65,7 +65,10 @@ def sync_current_user(current_user: dict = Depends(get_current_user)):
             "id": tx_id,
             "user_id": user_id,
             "user_email": email or "studio@awaazify.com",
-            "provider": "system",
+            # NOTE: "system" violates the payment_transactions_provider_check
+            # constraint (only easypaisa/jazzcash allowed). Using easypaisa as
+            # the provider for the system-granted signup bonus.
+            "provider": "easypaisa",
             "package_id": "signup-bonus",
             "amount_pkr": SIGNUP_BONUS_PKR,
             "amount_usd": 0,
