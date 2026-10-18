@@ -36,6 +36,7 @@ export const YouTubeTrimmerModal: React.FC<YouTubeTrimmerModalProps> = ({
   const [videoTitle, setVideoTitle] = useState<string>('');
   const [videoThumbnail, setVideoThumbnail] = useState<string>('');
   const [isLoadingMeta, setIsLoadingMeta] = useState<boolean>(false);
+  const [metaError, setMetaError] = useState<string>('');
 
   const [startSec, setStartSec] = useState<number>(60);
   const [endSec, setEndSec] = useState<number>(90);
@@ -54,6 +55,11 @@ export const YouTubeTrimmerModal: React.FC<YouTubeTrimmerModalProps> = ({
       try {
         const meta = await awaazifyApi.getYouTubeMeta(youtubeUrl);
         if (!cancelled) {
+          if (!meta.title && !meta.duration_sec) {
+            setMetaError('Video info nahi mil saki. URL check karein.');
+          } else {
+            setMetaError('');
+          }
           if (meta.duration_sec && meta.duration_sec > 0) {
             setTotalDurationSec(meta.duration_sec);
             // Default to a sensible segment if duration is known
@@ -172,6 +178,12 @@ export const YouTubeTrimmerModal: React.FC<YouTubeTrimmerModalProps> = ({
               <p className="text-xs text-slate-500 font-medium mt-0.5">
                 Total Length: 00:00 — {formatTimecode(totalDurationSec)}
               </p>
+              {metaError && (
+                <p className="text-xs text-red-600 font-semibold mt-1">{metaError}</p>
+              )}
+              {!youtubeUrl && (
+                <p className="text-xs text-red-600 font-semibold mt-1">URL khaali hai!</p>
+              )}
             </div>
           </div>
 
