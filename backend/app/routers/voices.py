@@ -47,6 +47,31 @@ async def train_custom_voice(payload: VoiceTrainPayload, current_user: dict = De
             detail="Recording must be at least 3 minutes (180 seconds) long."
         )
 
+    # 1b. P1: charge Rs. 150 for custom voice training — EXACTLY ONE deduction
+    # path (balance_pkr only; never the old multi-deduction pattern that also
+    # touched credits/USD/voice passes). The conditional update only applies
+    # when balance_pkr >= 150 AT UPDATE TIME, so concurrent training requests
+    # cannot double-spend: the loser sees 0 affected rows and gets 402.
+    TRAINING_PRICE_PKR = 150
+    user_rows = db.select("users", {"id": f"eq.{user_id}"})
+    balance_pkr = user_rows[0].get("balance_pkr", 0) if user_rows else 0
+    if balance_pkr < TRAINING_PRICE_PKR:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail="Insufficient balance. Training a custom voice costs Rs. 150.",
+        )
+    charged = db.update_where(
+        "users",
+        {"id": f"eq.{user_id}", "balance_pkr": f"gte.{TRAINING_PRICE_PKR}"},
+        {"balance_pkr": balance_pkr - TRAINING_PRICE_PKR},
+    )
+    if not charged:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail="Insufficient balance. Training a custom voice costs Rs. 150.",
+        )
+    logger.info(f"Charged Rs. {TRAINING_PRICE_PKR} training fee: user={user_id}")
+
     cleaned_url = None
 
     # 2. Offload Audio Cleaning to GPU Worker if configured

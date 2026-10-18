@@ -56,7 +56,6 @@ export const TrainVoiceTool: React.FC = () => {
     regionMode,
     wallet,
     formattedBalance,
-    consumeVoicePass,
     submitCustomVoiceTraining,
     setStudioTool,
   } = useApp();
@@ -79,6 +78,9 @@ export const TrainVoiceTool: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [successMsg, setSuccessMsg] = useState<string>('');
   const [errorMsg, setErrorMsg] = useState<string>('');
+  // P1: track the last submitted job to poll its honest backend status.
+  const [lastSubmittedJobName, setLastSubmittedJobName] = useState<string>('');
+  const [polledJobStatus, setPolledJobStatus] = useState<string>('');
 
   const uploadedSeconds = uploadedFiles.reduce((acc, f) => acc + f.durationSec, 0);
   const totalAudioSeconds = recordedSeconds + uploadedSeconds;
@@ -98,6 +100,28 @@ export const TrainVoiceTool: React.FC = () => {
       if (timer) window.clearInterval(timer);
     };
   }, [isRecording, isPaused]);
+
+  // P1: poll the backend for the submitted training job's real status.
+  // Stops once the job reaches a final state or the name is cleared.
+  useEffect(() => {
+    if (!lastSubmittedJobName) return;
+    let cancelled = false;
+    const refresh = async () => {
+      const jobs = await awaazifyApi.getTrainingJobs();
+      if (cancelled || jobs.length === 0) return;
+      const match =
+        jobs.find((j) => j.voiceName === lastSubmittedJobName) || null;
+      if (match && match.status) {
+        setPolledJobStatus(match.status);
+      }
+    };
+    refresh();
+    const interval = window.setInterval(refresh, 30000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [lastSubmittedJobName]);
 
   const handleStartStopRecording = async () => {
     setErrorMsg('');
@@ -135,6 +159,8 @@ export const TrainVoiceTool: React.FC = () => {
     e.preventDefault();
     setErrorMsg('');
     setSuccessMsg('');
+    setLastSubmittedJobName('');
+    setPolledJobStatus('');
 
     if (!customVoiceName.trim()) {
       setErrorMsg('Please enter a name for your custom voice model.');
@@ -161,7 +187,9 @@ export const TrainVoiceTool: React.FC = () => {
       return;
     }
 
-    consumeVoicePass();
+    // P1: the Rs. 150 training charge is deducted SERVER-SIDE by
+    // POST /api/v1/trainings (single atomic deduction). No client-side
+    // deduction here — that would double-charge the user.
     setIsSubmitting(true);
 
     // Upload files to Supabase raw-uploads bucket
@@ -199,9 +227,13 @@ export const TrainVoiceTool: React.FC = () => {
     }
 
     setIsSubmitting(false);
+    // P1 honesty: the voice is NOT instantly active. The backend charged
+    // Rs. 150 and queued the training — the voice appears in the library
+    // only after training completes.
     setSuccessMsg(
-      `"${customVoiceName}" is now active in your voice library, and 1 Free Full Song has been credited to your account!`
+      `"${customVoiceName}" submitted for training — status: Training in progress. Rs. 150 has been charged to your wallet. Your voice will appear in your library once training completes.`
     );
+    setLastSubmittedJobName(customVoiceName.trim());
     setCustomVoiceName('');
   };
 
@@ -594,18 +626,32 @@ export const TrainVoiceTool: React.FC = () => {
 
         {successMsg && (
           <div className="p-4 sm:p-5 rounded-2xl bg-emerald-50 border-2 border-[#10B981] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <span className="text-xs sm:text-sm font-extrabold text-emerald-950">
-              {successMsg}
-            </span>
+            <div className="space-y-1.5">
+              <span className="text-xs sm:text-sm font-extrabold text-emerald-950 block">
+                {successMsg}
+              </span>
+              {polledJobStatus && (
+                <span className="text-xs font-bold text-emerald-800 block">
+                  Current backend status: {polledJobStatus} (auto-refreshes)
+                </span>
+              )}
+            </div>
             <button
               type="button"
               onClick={() => setStudioTool('song-cover')}
               className="px-4 py-2.5 rounded-xl bg-[#10B981] text-white text-xs font-extrabold whitespace-nowrap shrink-0 cursor-pointer self-start sm:self-auto"
             >
-              Create Song in My New Voice →
+              Back to Song Studio →
             </button>
           </div>
         )}
+
+        {/* P1: explicit charge disclosure before submit */}
+        <p className="text-xs text-slate-500 font-semibold text-center -mt-2">
+          Submitting will charge <span className="font-extrabold text-[#0F172A]">{voicePackagePrice}</span> from
+          your wallet now. Training usually takes a few minutes — your voice appears in the library only
+          after training completes.
+        </p>
       </form>
     </div>
   );

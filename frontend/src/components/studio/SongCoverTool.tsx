@@ -56,6 +56,9 @@ export const SongCoverTool: React.FC = () => {
     'https://www.youtube.com/watch?v=StudioTrack'
   );
   const [isTrimmerOpen, setIsTrimmerOpen] = useState<boolean>(false);
+  // P1: real YouTube metadata fetched when the trimmer opens (nulls = placeholders).
+  const [ytMetaTitle, setYtMetaTitle] = useState<string | null>(null);
+  const [ytMetaAuthor, setYtMetaAuthor] = useState<string | null>(null);
   const [trimmedYoutube, setTrimmedYoutube] =
     useState<TrimmedYouTubeSelection | null>({
       youtubeUrl: 'https://www.youtube.com/watch?v=StudioTrack',
@@ -109,6 +112,13 @@ export const SongCoverTool: React.FC = () => {
       setYoutubeUrlInput('https://www.youtube.com/watch?v=StudioTrack');
     }
     setIsTrimmerOpen(true);
+    // P1: fetch real title/author in the background; the modal opens
+    // immediately and updates when metadata arrives (nulls = placeholders).
+    const url = youtubeUrlInput.trim() || 'https://www.youtube.com/watch?v=StudioTrack';
+    awaazifyApi.getYouTubeMeta(url).then((meta) => {
+      setYtMetaTitle(meta.title);
+      setYtMetaAuthor(meta.author_name);
+    });
   };
 
   const stopAllAudio = () => {
@@ -800,6 +810,8 @@ export const SongCoverTool: React.FC = () => {
       <YouTubeTrimmerModal
         isOpen={isTrimmerOpen}
         youtubeUrl={youtubeUrlInput}
+        videoTitle={ytMetaTitle ?? undefined}
+        channelName={ytMetaAuthor ?? undefined}
         onClose={() => setIsTrimmerOpen(false)}
         onConfirm={(selection) => {
           setTrimmedYoutube(selection);

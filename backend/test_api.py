@@ -60,6 +60,7 @@ def run_tests():
         ("GET", '/api/v1/payments', None),
         ("POST", '/api/v1/admin/payments/some-id/approve', None),
         ("POST", '/api/v1/admin/models', {'name': 'X', 'subtitle': 'Y', 'category': 'Z'}),
+        ("POST", '/api/v1/users/me/sync', None),
     ]
     for method, path, body in unauthenticated:
         if method == "POST":
@@ -68,6 +69,12 @@ def run_tests():
             res = client.get(path)
         assert res.status_code == 401, f"{method} {path} -> {res.status_code} (expected 401): {res.text}"
     print(f'Auth enforcement passed: {len(unauthenticated)} unauthenticated requests rejected with 401.')
+
+    # youtube-meta is a public utility endpoint: garbage input -> 200 with nulls
+    res_meta = client.get('/api/v1/utils/youtube-meta', params={'url': 'not-a-url'})
+    assert res_meta.status_code == 200, res_meta.text
+    assert res_meta.json() == {"title": None, "author_name": None}, res_meta.json()
+    print('youtube-meta fallback passed:', res_meta.json())
 
     # 3. Full happy-path flow (requires live Supabase + real JWTs)
     if not TEST_JWT:
@@ -113,14 +120,13 @@ def run_tests():
 
     admin_h = auth_headers(TEST_ADMIN_JWT)
 
-    # Admin Approve (idempotent — approve twice, expect no double credit)
+    # Admin Approve (race-safe: approve twice, second must 409, no double credit)
     pay_id = pay_data['paymentId']
     res_approve1 = client.post(f'/api/v1/admin/payments/{pay_id}/approve', headers=admin_h)
     assert res_approve1.status_code == 200, res_approve1.text
     res_approve2 = client.post(f'/api/v1/admin/payments/{pay_id}/approve', headers=admin_h)
-    assert res_approve2.status_code == 200, res_approve2.text
-    assert res_approve2.json().get('alreadyProcessed') is True, res_approve2.json()
-    print('Admin payment approve passed (idempotent on second approve).')
+    assert res_approve2.status_code == 409, res_approve2.text
+    print('Admin payment approve passed (second approve -> 409, no double credit).')
 
     # Non-admin must be rejected with 403
     res_forbidden = client.post(f'/api/v1/admin/payments/{pay_id}/approve', headers=user_h)

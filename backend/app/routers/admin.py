@@ -60,31 +60,29 @@ def list_all_voice_models(admin: dict = Depends(require_admin)):
 @router.post("/payments/{paymentId}/approve")
 def approve_payment(paymentId: str, admin: dict = Depends(require_admin)):
     logger.info(f"Admin {admin['id']} approving payment {paymentId}")
-    tx_rows = db.select("payment_transactions", {"id": f"eq.{paymentId}"})
-    if not tx_rows:
-        raise HTTPException(status_code=404, detail="Payment transaction not found")
 
-    tx = tx_rows[0]
-
-    # P0 idempotency: only credit the wallet when the payment is still Pending.
-    # A double-approve must never double-credit.
-    current_status = tx.get("status")
-    if current_status == "Approved":
-        logger.info(f"Payment {paymentId} is already Approved; skipping duplicate credit.")
-        return {"status": "Approved", "paymentId": paymentId, "alreadyProcessed": True}
-    if current_status not in ("Pending", None):
+    # P1 race-safe: ONE conditional DB update — the status flips to Approved
+    # only if it is still Pending AT UPDATE TIME. Concurrent double-clicks /
+    # double-approves: exactly one wins; the loser sees 0 affected rows.
+    updated = db.update_where(
+        "payment_transactions",
+        {"id": f"eq.{paymentId}", "status": "eq.Pending"},
+        {"status": "Approved"},
+    )
+    if not updated:
+        tx_rows = db.select("payment_transactions", {"id": f"eq.{paymentId}"})
+        if not tx_rows:
+            raise HTTPException(status_code=404, detail="Payment transaction not found")
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Payment is '{current_status}'; only Pending payments can be approved.",
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Payment is already '{tx_rows[0].get('status')}'; already processed.",
         )
 
+    tx = updated[0]
     user_id = tx.get("user_id")
     package_id = tx.get("package_id")
 
-    # Update payment status
-    db.update("payment_transactions", "id", paymentId, {"status": "Approved"})
-
-    # Credit user balance & song credits in Supabase
+    # Credit user balance & song credits in Supabase (winner only — runs once)
     if user_id:
         user_rows = db.select("users", {"id": f"eq.{user_id}"})
         if user_rows:
@@ -108,7 +106,20 @@ def approve_payment(paymentId: str, admin: dict = Depends(require_admin)):
 @router.post("/payments/{paymentId}/reject")
 def reject_payment(paymentId: str, admin: dict = Depends(require_admin)):
     logger.info(f"Admin {admin['id']} rejecting payment {paymentId}")
-    db.update("payment_transactions", "id", paymentId, {"status": "Rejected"})
+    # P1 race-safe: same conditional-update pattern as approve.
+    updated = db.update_where(
+        "payment_transactions",
+        {"id": f"eq.{paymentId}", "status": "eq.Pending"},
+        {"status": "Rejected"},
+    )
+    if not updated:
+        tx_rows = db.select("payment_transactions", {"id": f"eq.{paymentId}"})
+        if not tx_rows:
+            raise HTTPException(status_code=404, detail="Payment transaction not found")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Payment is already '{tx_rows[0].get('status')}'; already processed.",
+        )
     return {"status": "Rejected", "paymentId": paymentId}
 
 @router.post("/training-jobs/{jobId}/publish")

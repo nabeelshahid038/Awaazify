@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import FRONTEND_URL, HOST, PORT
-from app.routers import covers, voices, payments, admin
+from app.routers import covers, voices, payments, admin, users, utils
 
 # Setup Logging
 logging.basicConfig(
@@ -49,6 +49,8 @@ app.include_router(covers.router)
 app.include_router(voices.router)
 app.include_router(payments.router)
 app.include_router(admin.router)
+app.include_router(users.router)
+app.include_router(utils.router)
 
 @app.get("/")
 @app.get("/api")
