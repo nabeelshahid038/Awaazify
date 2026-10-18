@@ -106,15 +106,14 @@ class SupabaseRestClient:
             self._mock_tables[table].append(dict(record))
             return record
 
-        try:
-            with httpx.Client(timeout=10.0) as client:
-                res = client.post(f"{self.rest_url}/{table}", headers=self.headers, json=record)
-                res.raise_for_status()
-                data = res.json()
-                return data[0] if isinstance(data, list) and data else record
-        except Exception as e:
-            logger.error(f"Error inserting into {table}: {e}")
-            return record
+        # P0 follow-up: NEVER swallow insert failures. A failed write must
+        # raise (→ HTTP 500) so the caller knows it didn't persist. Silent
+        # fake-success caused "added but disappeared on refresh" bugs.
+        with httpx.Client(timeout=10.0) as client:
+            res = client.post(f"{self.rest_url}/{table}", headers=self.headers, json=record)
+            res.raise_for_status()
+            data = res.json()
+            return data[0] if isinstance(data, list) and data else record
 
     def update(self, table: str, match_column: str, match_value: Any, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         if not self.is_configured():
