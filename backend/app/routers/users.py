@@ -1,4 +1,5 @@
 import logging
+import uuid
 from fastapi import APIRouter, Depends
 from app.database import db
 from app.auth import get_current_user
@@ -10,9 +11,10 @@ SIGNUP_BONUS_PKR = 50
 
 
 def _bonus_tx_id(user_id: str) -> str:
-    # Deterministic id -> the payment_transactions PK makes the bonus
-    # exactly-once: a concurrent duplicate insert conflicts and raises.
-    return f"signup-bonus-{user_id}"
+    # Deterministic UUID5 -> valid UUID for the payment_transactions PK
+    # (which is UUID type), still exactly-once: a concurrent duplicate
+    # insert conflicts and raises.
+    return str(uuid.uuid5(uuid.NAMESPACE_DNS, f"signup-bonus-{user_id}"))
 
 
 @router.post("/me/sync")
