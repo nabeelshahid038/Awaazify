@@ -252,10 +252,14 @@ class SupabaseRestClient:
                 params = {match_column: f"eq.{match_value}"}
                 res = client.delete(f"{self.rest_url}/{table}", headers=headers, params=params)
                 res.raise_for_status()
-                data = res.json()
-                return bool(data) if isinstance(data, list) else True
+                # Supabase DELETE returns 204 No Content (empty body) on success.
+                # A 2xx status means the request succeeded. We can't know from
+                # the response alone whether a row was actually deleted, so the
+                # caller should check existence first if 404 semantics matter.
+                return True
         except Exception as e:
             logger.error(f"Error deleting from {table}: {e}")
+            return False
             return False
 
     def upload_file(self, bucket: str, path: str, file_bytes: bytes, content_type: str = "audio/mpeg") -> Optional[str]:
