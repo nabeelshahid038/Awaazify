@@ -18,6 +18,8 @@ export const PublicVoices: React.FC = () => {
 
   const visibleModels = voiceModels.filter((m) => {
     if (m.status === 'Hidden') return false;
+    // Public catalog never shows private custom voices.
+    if (m.isCustom) return false;
     const matchesSearch =
       m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       m.subtitle.toLowerCase().includes(searchQuery.toLowerCase()) ||
