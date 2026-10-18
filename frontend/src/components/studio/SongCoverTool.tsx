@@ -43,6 +43,7 @@ export const SongCoverTool: React.FC = () => {
     selectedVoiceId,
     setSelectedVoiceId,
     consumeSongPassOrTrial,
+    refreshWallet,
     addGeneratedSong,
     applyFreeRetryAdjustment,
     setStudioTool,
@@ -52,20 +53,10 @@ export const SongCoverTool: React.FC = () => {
   const [inputMode, setInputMode] = useState<'upload' | 'youtube'>('youtube');
   const [uploadedFileName, setUploadedFileName] = useState<string>('');
   const [selectedUploadFile, setSelectedUploadFile] = useState<File | null>(null);
-  const [youtubeUrlInput, setYoutubeUrlInput] = useState<string>(
-    'https://www.youtube.com/watch?v=StudioTrack'
-  );
+  const [youtubeUrlInput, setYoutubeUrlInput] = useState<string>('');
   const [isTrimmerOpen, setIsTrimmerOpen] = useState<boolean>(false);
   const [trimmedYoutube, setTrimmedYoutube] =
-    useState<TrimmedYouTubeSelection | null>({
-      youtubeUrl: 'https://www.youtube.com/watch?v=StudioTrack',
-      videoTitle: 'Selected YouTube Track',
-      channelName: 'YouTube Video',
-      totalDurationSec: 240,
-      startTimeSec: 60,
-      endTimeSec: 90,
-      isTrialClip: wallet.credits === 0,
-    });
+    useState<TrimmedYouTubeSelection | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const htmlAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -105,9 +96,6 @@ export const SongCoverTool: React.FC = () => {
   };
 
   const handleOpenYoutubeTrimmer = () => {
-    if (!youtubeUrlInput.trim()) {
-      setYoutubeUrlInput('https://www.youtube.com/watch?v=StudioTrack');
-    }
     setIsTrimmerOpen(true);
   };
 
@@ -124,6 +112,16 @@ export const SongCoverTool: React.FC = () => {
   const handleCreateSongCover = async () => {
     setStatusNotice('');
     stopAllAudio();
+
+    // Validate: YouTube mode needs a real URL, upload mode needs a file.
+    if (inputMode === 'youtube' && !youtubeUrlInput.trim()) {
+      setStatusNotice('Please paste a YouTube link first, or use the Trim & Select button to pick a song.');
+      return;
+    }
+    if (inputMode === 'upload' && !selectedUploadFile) {
+      setStatusNotice('Please upload an audio file first.');
+      return;
+    }
 
     const isTrialJob = wallet.credits === 0;
     const allowed = consumeSongPassOrTrial(isTrialJob);
@@ -200,6 +198,8 @@ export const SongCoverTool: React.FC = () => {
 
       addGeneratedSong(newSong);
       setActiveOutputSong(newSong);
+      // Backend charged the wallet — refresh to show the true balance.
+      refreshWallet();
     } catch (err: any) {
       console.error('Song cover generation error:', err);
       setStatusNotice(err.message || 'Failed to generate song cover. Please ensure backend is reachable.');
