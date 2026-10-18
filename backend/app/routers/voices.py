@@ -1,17 +1,18 @@
 import uuid
 import logging
 from pathlib import Path
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 import httpx
 from scipy.io import wavfile
 from app.models.schemas import VoiceTrainPayload, VoiceTrainResponse
 from app.database import db
+from app.auth import get_current_user
 from app.config import (
     TEMP_AUDIO_DIR,
     GPU_WORKER_URL,
     GPU_WORKER_API_KEY,
+    GPU_WORKER_SUPABASE_KEY,
     SUPABASE_URL,
-    SUPABASE_SERVICE_ROLE_KEY,
 )
 from app.services.voice_cleaner import clean_and_prepare_voice_dataset
 from app.services.youtube_clipper import generate_fallback_wav
@@ -19,18 +20,13 @@ from app.services.youtube_clipper import generate_fallback_wav
 router = APIRouter(prefix="/api/v1/voices", tags=["Voice Training"])
 logger = logging.getLogger("awaazify.voices")
 
-DEFAULT_STUDIO_USER_ID = "4d8ef3dc-12d1-4b97-bea6-6858756bfbdc"
-
-def resolve_uuid(val: str, default: str) -> str:
-    try:
-        return str(uuid.UUID(val))
-    except (ValueError, AttributeError, TypeError):
-        return default
-
 @router.post("/train", response_model=VoiceTrainResponse)
-async def train_custom_voice(payload: VoiceTrainPayload):
+async def train_custom_voice(payload: VoiceTrainPayload, current_user: dict = Depends(get_current_user)):
     job_id = str(uuid.uuid4())
-    user_id = resolve_uuid(payload.userId, DEFAULT_STUDIO_USER_ID)
+    # P0: user_id ALWAYS comes from the verified JWT. The client-supplied
+    # payload.userId is accepted for backwards compatibility but ignored —
+    # a missing/invalid token already returned 401 in get_current_user.
+    user_id = current_user["id"]
     logger.info(f"Custom voice training request: user={user_id}, name={payload.voiceName}, files={len(payload.audioFiles)}")
 
     total_duration_sec = 0
@@ -55,6 +51,13 @@ async def train_custom_voice(payload: VoiceTrainPayload):
 
     # 2. Offload Audio Cleaning to GPU Worker if configured
     if GPU_WORKER_URL:
+        # P0: NEVER send the backend's service-role key to the external worker.
+        # The worker must use its own dedicated, limited-scope key.
+        if not GPU_WORKER_SUPABASE_KEY:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="GPU worker is not configured: set GPU_WORKER_SUPABASE_KEY on the backend.",
+            )
         target_endpoint = (
             GPU_WORKER_URL
             if GPU_WORKER_URL.endswith("/clean-training-dataset")
@@ -66,7 +69,8 @@ async def train_custom_voice(payload: VoiceTrainPayload):
             "training_job_id": job_id,
             "audio_file_urls": uploaded_urls,
             "supabase_url": SUPABASE_URL,
-            "supabase_key": SUPABASE_SERVICE_ROLE_KEY,
+            # Dedicated worker key (see config.py). Never the service-role key.
+            "supabase_key": GPU_WORKER_SUPABASE_KEY,
         }
         headers = {}
         if GPU_WORKER_API_KEY:
@@ -125,7 +129,7 @@ async def train_custom_voice(payload: VoiceTrainPayload):
     )
 
 @router.get("/training-jobs")
-def list_training_jobs(userId: str = ""):
-    resolved = resolve_uuid(userId, DEFAULT_STUDIO_USER_ID) if userId else ""
-    params = {"user_id": f"eq.{resolved}"} if resolved else {}
-    return db.select("voice_training_jobs", params)
+def list_training_jobs(userId: str = "", current_user: dict = Depends(get_current_user)):
+    # P0: the `userId` query param is kept for backwards compatibility but is
+    # ignored — jobs are always listed for the verified JWT identity.
+    return db.select("voice_training_jobs", {"user_id": f"eq.{current_user['id']}"})

@@ -32,7 +32,7 @@ export const AuthModal: React.FC = () => {
   const [verificationStep, setVerificationStep] = useState<
     'form' | 'verify-email'
   >('form');
-  const [verificationCode, setVerificationCode] = useState('849201');
+  const [verificationCode, setVerificationCode] = useState('');
   const [resentNotice, setResentNotice] = useState(false);
 
   if (!isAuthModalOpen) return null;
@@ -145,7 +145,7 @@ export const AuthModal: React.FC = () => {
                 maxLength={6}
                 value={verificationCode}
                 onChange={(e) => setVerificationCode(e.target.value)}
-                placeholder="849201"
+                placeholder="••••••"
                 className="w-full px-4 py-3 rounded-2xl bg-slate-50 border border-slate-200 focus:border-[#10B981] focus:bg-white focus:outline-none text-center font-mono text-lg font-extrabold tracking-widest text-[#0F172A]"
               />
             </div>

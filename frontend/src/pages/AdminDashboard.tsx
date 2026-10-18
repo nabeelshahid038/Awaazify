@@ -42,10 +42,13 @@ export const AdminDashboard: React.FC = () => {
   } = useApp();
 
   // Admin Security Verification State
+  // P0: real admin enforcement happens SERVER-SIDE (backend requires
+  // role='admin' on every /api/v1/admin/* route). This gate is UI-only —
+  // no PIN/OTP values are prefilled or trusted here.
   const [verifyStep, setVerifyStep] = useState<'credentials' | 'otp'>('credentials');
-  const [adminEmail, setAdminEmail] = useState('admin@awaazify.com');
-  const [adminPin, setAdminPin] = useState('202600');
-  const [adminOtp, setAdminOtp] = useState('849201');
+  const [adminEmail, setAdminEmail] = useState('');
+  const [adminPin, setAdminPin] = useState('');
+  const [adminOtp, setAdminOtp] = useState('');
   const [authError, setAuthError] = useState('');
 
   const [activeTab, setActiveTab] = useState<'models' | 'payments' | 'training'>('models');
@@ -100,24 +103,33 @@ export const AdminDashboard: React.FC = () => {
     e.preventDefault();
     if (!name.trim()) return;
     setIsSubmittingModel(true);
+    setCmsFeedback('');
 
-    await addAdminVoiceModel({
-      name: name.trim(),
-      subtitle: subtitle.trim() || 'Expressive studio singing voice',
-      category,
-      avatarConfig: {
-        silhouetteType: 'vocalist',
-        gradientTheme,
-        baseFreqHz: 215,
-      },
-      modelFileName: `${name.toLowerCase().replace(/\s+/g, '_')}.pth`,
-      extraFileName: `${name.toLowerCase().replace(/\s+/g, '_')}.index`,
-      modelFileUrl: pthDriveUrl.trim() || undefined,
-      indexFileUrl: indexDriveUrl.trim() || undefined,
-      defaultPitch: 0,
-      previewAudioUrl: demoFileName || 'https://zvmixkkymxgnqatxehqg.supabase.co/storage/v1/object/public/rvc-models/demo_audio.mp3',
-      status: 'Active',
-    });
+    try {
+      await addAdminVoiceModel({
+        name: name.trim(),
+        subtitle: subtitle.trim() || 'Expressive studio singing voice',
+        category,
+        avatarConfig: {
+          silhouetteType: 'vocalist',
+          gradientTheme,
+          baseFreqHz: 215,
+        },
+        modelFileName: `${name.toLowerCase().replace(/\s+/g, '_')}.pth`,
+        extraFileName: `${name.toLowerCase().replace(/\s+/g, '_')}.index`,
+        modelFileUrl: pthDriveUrl.trim() || undefined,
+        indexFileUrl: indexDriveUrl.trim() || undefined,
+        defaultPitch: 0,
+        previewAudioUrl: demoFileName || 'https://zvmixkkymxgnqatxehqg.supabase.co/storage/v1/object/public/rvc-models/demo_audio.mp3',
+        status: 'Active',
+      });
+    } catch (err: any) {
+      // P0: surface backend failures instead of pretending the model was published.
+      setIsSubmittingModel(false);
+      setCmsFeedback(`Failed to publish model: ${err?.message || 'server error'}`);
+      setTimeout(() => setCmsFeedback(''), 5000);
+      return;
+    }
 
     setName('');
     setSubtitle('');
@@ -234,7 +246,7 @@ export const AdminDashboard: React.FC = () => {
                     maxLength={6}
                     value={adminOtp}
                     onChange={(e) => setAdminOtp(e.target.value)}
-                    placeholder="849201"
+                    placeholder="••••••"
                     className="w-full px-4 py-3 rounded-2xl bg-slate-50 border border-slate-200 focus:border-[#10B981] focus:bg-white focus:outline-none text-center font-mono text-lg font-extrabold tracking-widest text-[#0F172A]"
                   />
                 </div>
