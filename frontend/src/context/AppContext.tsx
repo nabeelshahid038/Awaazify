@@ -16,6 +16,36 @@ import { awaazifyApi } from '../services/api';
 import { studioAudio } from '../utils/audioEngine';
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
 
+// Post-OAuth return routing: loginWithGoogle() can record where the caller
+// wants to land after the full-page Google round-trip. sessionStorage is
+// per-tab, so it survives the OAuth redirect (same tab) without leaking
+// across tabs.
+const POST_LOGIN_VIEW_KEY = 'awaazify_post_login_view';
+
+/** Read the one-time post-login view and remove it (single-use). */
+function consumePostLoginView(): string | null {
+  try {
+    const v = sessionStorage.getItem(POST_LOGIN_VIEW_KEY);
+    sessionStorage.removeItem(POST_LOGIN_VIEW_KEY);
+    return v;
+  } catch {
+    return null;
+  }
+}
+
+// The OAuth return fires BOTH the hash-cleanup effect and onAuthStateChange's
+// SIGNED_IN (order varies). Memoize the consumed value per page load so both
+// route consistently to the same view.
+let resolvedPostLoginView: 'admin' | 'studio' | null = null;
+
+/** Admin logins return to the admin view; everything else lands on studio. */
+function resolvePostLoginView(): 'admin' | 'studio' {
+  if (resolvedPostLoginView === null) {
+    resolvedPostLoginView = consumePostLoginView() === 'admin' ? 'admin' : 'studio';
+  }
+  return resolvedPostLoginView;
+}
+
 const INITIAL_VOICE_MODELS: VoiceModel[] = [
   {
     id: 'vm-atif-aslam',
@@ -173,7 +203,7 @@ interface AppContextValue {
   isAuthModalOpen: boolean;
   openAuthModal: (pendingAction?: { targetTool?: StudioTool; voiceId?: string }) => void;
   closeAuthModal: () => void;
-  loginWithGoogle: () => Promise<void>;
+  loginWithGoogle: (returnTo?: string) => Promise<void>;
   logoutUser: () => Promise<void>;
   requireAuthAndNavigate: (targetTool?: StudioTool, voiceId?: string) => void;
 
@@ -381,7 +411,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         search.includes('error=')
       ) {
         window.history.replaceState(null, '', window.location.pathname);
-        setActiveView('studio');
+        setActiveView(resolvePostLoginView());
       }
     }
 
@@ -440,7 +470,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (session?.user) {
         syncSupabaseUser(session.user);
         if (event === 'SIGNED_IN') {
-          setActiveView('studio');
+          setActiveView(resolvePostLoginView());
         }
       } else {
         setIsAuthenticated(false);
@@ -494,9 +524,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setPendingRedirect(null);
   };
 
-  const loginWithGoogle = async () => {
+  const loginWithGoogle = async (returnTo?: string) => {
     if (!isSupabaseConfigured) {
       throw new Error('Sign-in is not configured. Please try again later.');
+    }
+    // Fresh login round-trip: reset the memoized destination, then record
+    // where this login should land. A non-admin login also clears any stale
+    // marker (e.g. an abandoned admin login) so it can't misroute later.
+    resolvedPostLoginView = null;
+    try {
+      if (returnTo) {
+        sessionStorage.setItem(POST_LOGIN_VIEW_KEY, returnTo);
+      } else {
+        sessionStorage.removeItem(POST_LOGIN_VIEW_KEY);
+      }
+    } catch {
+      // storage unavailable — login still proceeds, landing on studio
     }
     await supabase.auth.signInWithOAuth({
       provider: 'google',

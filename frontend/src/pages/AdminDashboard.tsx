@@ -78,7 +78,7 @@ export const AdminDashboard: React.FC = () => {
   const handleGoogleContinue = async () => {
     setGateError('');
     try {
-      await loginWithGoogle();
+      await loginWithGoogle('admin');
     } catch (err: any) {
       setGateError(err?.message || 'Google sign-in failed. Please try again.');
     }
