@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   ArrowLeft,
   PlusCircle,
@@ -14,22 +14,22 @@ import {
   CreditCard,
   Users,
   Lock,
-  Mail,
-  KeyRound,
-  ArrowRight,
+  LogOut,
   Link2,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { BrandLogo } from '../components/BrandLogo';
 import { VoiceCategory, VoiceModel } from '../types';
 import { studioAudio } from '../utils/audioEngine';
+import { awaazifyApi } from '../services/api';
 
 export const AdminDashboard: React.FC = () => {
   const {
     isAuthenticated,
+    user,
     setActiveView,
-    isAdminVerified,
-    setIsAdminVerified,
+    loginWithGoogle,
+    logoutUser,
     voiceModels,
     addAdminVoiceModel,
     toggleVoiceModelStatus,
@@ -41,15 +41,48 @@ export const AdminDashboard: React.FC = () => {
     publishTrainedVoiceToUserLibrary,
   } = useApp();
 
-  // Admin Security Verification State
-  // P0: real admin enforcement happens SERVER-SIDE (backend requires
-  // role='admin' on every /api/v1/admin/* route). This gate is UI-only —
-  // no PIN/OTP values are prefilled or trusted here.
-  const [verifyStep, setVerifyStep] = useState<'credentials' | 'otp'>('credentials');
-  const [adminEmail, setAdminEmail] = useState('');
-  const [adminPin, setAdminPin] = useState('');
-  const [adminOtp, setAdminOtp] = useState('');
-  const [authError, setAuthError] = useState('');
+  // Google-auth admin gate. The stealth entry (Ctrl+Shift+A / 5x logo click)
+  // opens this panel shell; real enforcement is SERVER-SIDE — the backend
+  // allowlists ONE admin Gmail (ADMIN_EMAIL env var) against the verified
+  // Google JWT email on every /api/v1/admin/* route. This UI only decides
+  // what to show: sign-in card, access-denied card, or the dashboard.
+  const [adminCheck, setAdminCheck] = useState<'loading' | 'allowed' | 'denied' | 'signed-out'>('loading');
+  const [gateError, setGateError] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!isAuthenticated) {
+        if (!cancelled) setAdminCheck('signed-out');
+        return;
+      }
+      if (!cancelled) {
+        setAdminCheck('loading');
+        setGateError('');
+      }
+      try {
+        const me = await awaazifyApi.getAdminMe();
+        if (!cancelled) setAdminCheck(me.is_admin ? 'allowed' : 'denied');
+      } catch (err: any) {
+        if (!cancelled) {
+          setGateError(err?.message || 'Could not verify admin access.');
+          setAdminCheck('denied');
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated]);
+
+  const handleGoogleContinue = async () => {
+    setGateError('');
+    try {
+      await loginWithGoogle();
+    } catch (err: any) {
+      setGateError(err?.message || 'Google sign-in failed. Please try again.');
+    }
+  };
 
   const [activeTab, setActiveTab] = useState<'models' | 'payments' | 'training'>('models');
 
@@ -73,31 +106,6 @@ export const AdminDashboard: React.FC = () => {
   const [readyFileByJob, setReadyFileByJob] = useState<Record<string, string>>({});
 
   const pendingPaymentsCount = transactions.filter((t) => t.status === 'Pending').length;
-
-  const handleVerifyStepOne = (e: React.FormEvent) => {
-    e.preventDefault();
-    setAuthError('');
-    if (!adminEmail.trim().includes('@')) {
-      setAuthError('Please enter a valid admin email address.');
-      return;
-    }
-    if (adminPin.trim().length < 4) {
-      setAuthError('Please enter your 6-digit Admin Security PIN.');
-      return;
-    }
-    setVerifyStep('otp');
-  };
-
-  const handleVerifyStepTwo = (e: React.FormEvent) => {
-    e.preventDefault();
-    setAuthError('');
-    if (adminOtp.trim().length < 4) {
-      setAuthError('Please enter the 6-digit security verification code.');
-      return;
-    }
-    setIsAdminVerified(true);
-    setVerifyStep('credentials');
-  };
 
   const handleCreateModel = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -142,8 +150,12 @@ export const AdminDashboard: React.FC = () => {
     setTimeout(() => setCmsFeedback(''), 3500);
   };
 
-  // RENDER ADMIN SECURITY VERIFICATION GATE IF NOT VERIFIED
-  if (!isAdminVerified) {
+  // RENDER GOOGLE-AUTH ADMIN GATE (replaces the old PIN/OTP theater).
+  // The stealth entry opens this shell; the backend enforces the single
+  // admin Gmail on every admin API call. States: signed-out -> Google button;
+  // loading -> spinner; denied -> restricted message + sign out; allowed ->
+  // the full dashboard below.
+  if (adminCheck !== 'allowed') {
     return (
       <div className="min-h-screen bg-[#F8FAFC] text-[#0F172A] flex flex-col">
         <header className="bg-white border-b border-slate-200/80">
@@ -170,109 +182,81 @@ export const AdminDashboard: React.FC = () => {
                 <ShieldCheck className="w-6 h-6" />
               </div>
               <h1 className="text-xl sm:text-2xl font-extrabold text-[#0F172A]">
-                Admin Security Verification
+                Admin Access
               </h1>
               <p className="text-xs sm:text-sm text-slate-600 font-medium">
-                {verifyStep === 'credentials'
-                  ? 'Verify your administrator credentials to unlock the control panel.'
-                  : `Enter the 6-digit security code sent to ${adminEmail}.`}
+                {adminCheck === 'signed-out' &&
+                  'This area is restricted to the Awaazify administrator. Sign in with the admin Google account to continue.'}
+                {adminCheck === 'loading' && 'Verifying admin access…'}
+                {adminCheck === 'denied' &&
+                  'Access restricted — this area is limited to the admin account.'}
               </p>
             </div>
 
-            {verifyStep === 'credentials' ? (
-              <form onSubmit={handleVerifyStepOne} className="space-y-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                    Administrator Email *
-                  </label>
-                  <div className="relative">
-                    <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                    <input
-                      type="email"
-                      required
-                      value={adminEmail}
-                      onChange={(e) => setAdminEmail(e.target.value)}
-                      placeholder="admin@awaazify.com"
-                      className="w-full pl-10 pr-4 py-3 rounded-2xl bg-slate-50 border border-slate-200 focus:border-[#10B981] focus:bg-white focus:outline-none text-sm font-semibold text-[#0F172A]"
-                    />
-                  </div>
-                </div>
+            {adminCheck === 'loading' && (
+              <div className="flex justify-center py-6">
+                <RefreshCw className="w-8 h-8 text-[#10B981] animate-spin" />
+              </div>
+            )}
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                    Admin Security PIN *
-                  </label>
-                  <div className="relative">
-                    <KeyRound className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                    <input
-                      type="password"
-                      required
-                      value={adminPin}
-                      onChange={(e) => setAdminPin(e.target.value)}
-                      placeholder="••••••"
-                      className="w-full pl-10 pr-4 py-3 rounded-2xl bg-slate-50 border border-slate-200 focus:border-[#10B981] focus:bg-white focus:outline-none text-sm font-mono font-bold text-[#0F172A]"
-                    />
-                  </div>
-                </div>
-
-                {authError && (
-                  <p className="text-xs text-red-600 font-bold text-center">
-                    {authError}
-                  </p>
-                )}
-
-                <button
-                  type="submit"
-                  className="w-full flex items-center justify-center gap-2 py-3.5 px-5 rounded-2xl bg-[#10B981] hover:bg-[#059669] text-white font-extrabold text-sm shadow-sm transition-all cursor-pointer"
-                >
-                  <span>Send Security Code</span>
-                  <ArrowRight className="w-4 h-4" />
-                </button>
-              </form>
-            ) : (
-              <form onSubmit={handleVerifyStepTwo} className="space-y-4">
-                <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-950 font-semibold text-center">
-                  2-Step Verification Code dispatched to{' '}
-                  <strong>{adminEmail}</strong>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                    6-Digit Security Code *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    maxLength={6}
-                    value={adminOtp}
-                    onChange={(e) => setAdminOtp(e.target.value)}
-                    placeholder="••••••"
-                    className="w-full px-4 py-3 rounded-2xl bg-slate-50 border border-slate-200 focus:border-[#10B981] focus:bg-white focus:outline-none text-center font-mono text-lg font-extrabold tracking-widest text-[#0F172A]"
-                  />
-                </div>
-
-                {authError && (
-                  <p className="text-xs text-red-600 font-bold text-center">
-                    {authError}
-                  </p>
-                )}
-
-                <button
-                  type="submit"
-                  className="w-full flex items-center justify-center gap-2 py-3.5 px-5 rounded-2xl bg-[#10B981] hover:bg-[#059669] text-white font-extrabold text-sm shadow-sm transition-all cursor-pointer"
-                >
-                  <ShieldCheck className="w-4 h-4" />
-                  <span>Verify & Unlock Admin Dashboard</span>
-                </button>
-
+            {adminCheck === 'signed-out' && (
+              <>
                 <button
                   type="button"
-                  onClick={() => setVerifyStep('credentials')}
-                  className="w-full py-2 text-xs font-bold text-slate-500 hover:text-[#0F172A] cursor-pointer"
+                  onClick={handleGoogleContinue}
+                  className="w-full flex items-center justify-center gap-3 py-3.5 px-5 rounded-2xl bg-[#10B981] hover:bg-[#059669] text-white font-extrabold text-sm transition-all shadow-sm cursor-pointer"
                 >
-                  ← Back to Admin Credentials
+                  <div className="w-6 h-6 rounded-full bg-white flex items-center justify-center shrink-0">
+                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24">
+                      <path
+                        fill="#4285F4"
+                        d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"
+                      />
+                      <path
+                        fill="#34A853"
+                        d="M12 24c3.3 0 6.08-1.09 8.1-2.96l-3.88-3.05c-1.08.72-2.45 1.16-4.22 1.16-3.24 0-5.98-2.18-6.96-5.11H1.02v3.14C3.03 21.18 7.21 24 12 24z"
+                      />
+                      <path
+                        fill="#FBBC05"
+                        d="M5.04 14.04C4.79 13.32 4.65 12.55 4.65 11.75s.14-1.57.39-2.29V6.32H1.02C.37 7.61 0 9.09 0 11.75s.37 4.14 1.02 5.43l4.02-3.14z"
+                      />
+                      <path
+                        fill="#EA4335"
+                        d="M12 4.75c1.79 0 3.4.62 4.67 1.82l3.5-3.5C18.07 1.14 15.3 0 12 0 7.21 0 3.03 2.82 1.02 6.82l4.02 3.14c.98-2.93 3.72-5.21 6.96-5.21z"
+                      />
+                    </svg>
+                  </div>
+                  <span>Continue with Google</span>
                 </button>
-              </form>
+                {gateError && (
+                  <p className="text-xs text-red-600 font-bold text-center">
+                    {gateError}
+                  </p>
+                )}
+              </>
+            )}
+
+            {adminCheck === 'denied' && (
+              <div className="space-y-4">
+                {user?.email && (
+                  <p className="text-xs text-slate-500 font-semibold text-center">
+                    Signed in as <span className="text-[#0F172A]">{user.email}</span>
+                  </p>
+                )}
+                {gateError && (
+                  <p className="text-xs text-red-600 font-bold text-center">
+                    {gateError}
+                  </p>
+                )}
+                <button
+                  type="button"
+                  onClick={() => logoutUser()}
+                  className="w-full flex items-center justify-center gap-2 py-3.5 px-5 rounded-2xl bg-[#0F172A] hover:bg-slate-800 text-white font-extrabold text-sm transition-all cursor-pointer"
+                >
+                  <LogOut className="w-4 h-4" />
+                  <span>Sign Out</span>
+                </button>
+              </div>
             )}
           </div>
         </main>
@@ -300,7 +284,7 @@ export const AdminDashboard: React.FC = () => {
           <div className="flex items-center gap-2 shrink-0">
             <button
               type="button"
-              onClick={() => setIsAdminVerified(false)}
+              onClick={() => logoutUser()}
               className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-200 text-xs font-extrabold text-amber-900 transition-colors cursor-pointer whitespace-nowrap"
             >
               <Lock className="w-3.5 h-3.5" />
