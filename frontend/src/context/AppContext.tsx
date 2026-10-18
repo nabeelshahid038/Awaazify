@@ -614,11 +614,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return true;
       }
     }
-    if (wallet.credits >= 1 || wallet.balancePkr >= 50 || wallet.balanceUsd >= 0.99) {
+    // P0: deduct EXACTLY ONE payment method per song — never more than one.
+    // Priority: 1 song credit first, then Rs. 50, then $0.99.
+    if (wallet.credits >= 1) {
+      setWallet((prev) => ({ ...prev, credits: Math.max(0, prev.credits - 1) }));
+      return true;
+    }
+    if (wallet.balancePkr >= 50) {
+      setWallet((prev) => ({ ...prev, balancePkr: Math.max(0, prev.balancePkr - 50) }));
+      return true;
+    }
+    if (wallet.balanceUsd >= 0.99) {
       setWallet((prev) => ({
         ...prev,
-        credits: Math.max(0, prev.credits - 1),
-        balancePkr: Math.max(0, prev.balancePkr - 50),
         balanceUsd: Math.max(0, Number((prev.balanceUsd - 0.99).toFixed(2))),
       }));
       return true;
@@ -807,34 +815,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     voicePassAdded: number;
     amountUsd: number;
   }) => {
-    const pkrEquivalent = data.packageId === 'song-50' ? 50 : 150;
-    const newTx: PaymentTransaction = {
-      id: `pay_${Date.now().toString(36)}`,
-      userId: user?.id || 'usr_studio',
-      userEmail: user?.email || 'user@example.com',
-      provider: 'card',
-      packageId: data.packageId,
-      packageName: data.packageName,
-      songsAdded: data.songsAdded,
-      voicePassAdded: data.voicePassAdded,
-      amountDisplay: `$${data.amountUsd.toFixed(2)}`,
-      amountPkr: pkrEquivalent,
-      amountUsd: data.amountUsd,
-      transactionId: `CARD_${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
-      status: 'Approved',
-      createdAt: 'Verified Instantly',
-    };
-    setTransactions((prev) => [newTx, ...prev]);
-    addWalletPackage(
-      data.songsAdded,
-      data.voicePassAdded,
-      pkrEquivalent,
-      data.amountUsd
+    // P0: card payments are DISABLED until a real payment processor (e.g.
+    // Stripe) is integrated. This function must never mint credits — the
+    // previous implementation created "Approved" transactions with a fake
+    // test card number and no processor. The Wallet UI now shows a
+    // "Card payments coming soon" state instead of calling this.
+    throw new Error(
+      'Card payments are coming soon. Please top up with EasyPaisa or JazzCash.'
     );
   };
 
   const approveTransaction = async (txId: string) => {
-    await awaazifyApi.approvePayment(txId);
+    try {
+      await awaazifyApi.approvePayment(txId);
+    } catch (err: any) {
+      // P0: surface backend failures to the admin instead of pretending success.
+      window.alert(`Could not approve payment: ${err?.message || 'server error'}`);
+      return;
+    }
     setTransactions((prev) =>
       prev.map((tx) => {
         if (tx.id !== txId || tx.status === 'Approved') return tx;
@@ -850,7 +848,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const rejectTransaction = async (txId: string) => {
-    await awaazifyApi.rejectPayment(txId);
+    try {
+      await awaazifyApi.rejectPayment(txId);
+    } catch (err: any) {
+      window.alert(`Could not reject payment: ${err?.message || 'server error'}`);
+      return;
+    }
     setTransactions((prev) =>
       prev.map((tx) => (tx.id === txId ? { ...tx, status: 'Rejected' } : tx))
     );
@@ -913,10 +916,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const job = trainingJobs.find((j) => j.id === jobId);
     if (!job) return;
 
-    const res = await awaazifyApi.publishTrainedVoice(jobId, {
-      modelFileUrl: modelFile,
-      indexFileUrl: extraFile,
-    });
+    let res;
+    try {
+      res = await awaazifyApi.publishTrainedVoice(jobId, {
+        modelFileUrl: modelFile,
+        indexFileUrl: extraFile,
+      });
+    } catch (err: any) {
+      // P0: surface backend failures to the admin instead of pretending success.
+      window.alert(`Could not publish trained voice: ${err?.message || 'server error'}`);
+      return;
+    }
 
     const newCustomModel: VoiceModel = {
       id: res.voiceModelId || `vm_custom_${Date.now().toString(36)}`,

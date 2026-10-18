@@ -1,16 +1,17 @@
 import uuid
 import logging
 from pathlib import Path
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 import httpx
 from app.models.schemas import CoverGeneratePayload, CoverGenerateResponse
 from app.database import db
+from app.auth import get_current_user
 from app.config import (
     TEMP_AUDIO_DIR,
     GPU_WORKER_URL,
     GPU_WORKER_API_KEY,
+    GPU_WORKER_SUPABASE_KEY,
     SUPABASE_URL,
-    SUPABASE_SERVICE_ROLE_KEY,
 )
 from app.services.drive_downloader import ensure_model_files
 from app.services.youtube_clipper import clip_youtube_audio, generate_fallback_wav
@@ -21,7 +22,6 @@ from app.services.audio_mixer import mix_converted_vocals_and_beat
 router = APIRouter(prefix="/api/v1/covers", tags=["Song Covers"])
 logger = logging.getLogger("awaazify.covers")
 
-DEFAULT_STUDIO_USER_ID = "4d8ef3dc-12d1-4b97-bea6-6858756bfbdc"
 DEFAULT_BABAR_MODEL_ID = "e81d4fae-7dec-11d0-a765-00a0c91e6bf1"
 
 def resolve_uuid(val: str, default: str) -> str:
@@ -31,9 +31,12 @@ def resolve_uuid(val: str, default: str) -> str:
         return default
 
 @router.post("/generate", response_model=CoverGenerateResponse)
-async def generate_song_cover(payload: CoverGeneratePayload):
+async def generate_song_cover(payload: CoverGeneratePayload, current_user: dict = Depends(get_current_user)):
     job_id = str(uuid.uuid4())
-    user_id = resolve_uuid(payload.userId, DEFAULT_STUDIO_USER_ID)
+    # P0: user_id ALWAYS comes from the verified JWT. The client-supplied
+    # payload.userId is accepted for backwards compatibility but ignored —
+    # a missing/invalid token already returned 401 in get_current_user.
+    user_id = current_user["id"]
     voice_model_id = resolve_uuid(payload.voiceModelId, DEFAULT_BABAR_MODEL_ID)
     
     logger.info(f"Processing song cover request: job={job_id}, user={user_id}, model={voice_model_id}")
@@ -96,6 +99,13 @@ async def generate_song_cover(payload: CoverGeneratePayload):
 
     # 3. Offload to External GPU Worker (Modal.com or Colab Cloudflare Tunnel) if configured
     if GPU_WORKER_URL:
+        # P0: NEVER send the backend's service-role key to the external worker.
+        # The worker must use its own dedicated, limited-scope key.
+        if not GPU_WORKER_SUPABASE_KEY:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="GPU worker is not configured: set GPU_WORKER_SUPABASE_KEY on the backend.",
+            )
         target_endpoint = (
             GPU_WORKER_URL
             if GPU_WORKER_URL.endswith("/process-cover")
@@ -116,7 +126,8 @@ async def generate_song_cover(payload: CoverGeneratePayload):
             "pitch_shift": payload.pitchShift,
             "clarity_boost": bool(payload.clarityBoost),
             "supabase_url": SUPABASE_URL,
-            "supabase_key": SUPABASE_SERVICE_ROLE_KEY,
+            # Dedicated worker key (see config.py). Never the service-role key.
+            "supabase_key": GPU_WORKER_SUPABASE_KEY,
         }
         headers = {}
         if GPU_WORKER_API_KEY:
@@ -206,7 +217,7 @@ async def generate_song_cover(payload: CoverGeneratePayload):
     )
 
 @router.get("")
-def list_songs(userId: str = ""):
-    resolved = resolve_uuid(userId, DEFAULT_STUDIO_USER_ID) if userId else ""
-    params = {"user_id": f"eq.{resolved}"} if resolved else {}
-    return db.select("generated_songs", params)
+def list_songs(userId: str = "", current_user: dict = Depends(get_current_user)):
+    # P0: the `userId` query param is kept for backwards compatibility but is
+    # ignored — songs are always listed for the verified JWT identity.
+    return db.select("generated_songs", {"user_id": f"eq.{current_user['id']}"})
