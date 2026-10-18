@@ -167,39 +167,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [voiceModels, setVoiceModels] = useState<VoiceModel[]>([]);
   const [generatedSongs, setGeneratedSongs] = useState<GeneratedSong[]>([]);
-  const [transactions, setTransactions] = useState<PaymentTransaction[]>([
-    {
-      id: 'tx-sample-1',
-      userId: 'usr-sample-01',
-      userEmail: 'arslan.khan@gmail.com',
-      provider: 'easypaisa',
-      packageId: 'voice-150',
-      packageName: 'Custom Voice + 1 Free Song',
-      songsAdded: 1,
-      voicePassAdded: 1,
-      amountDisplay: 'Rs. 150',
-      amountPkr: 150,
-      amountUsd: 2.99,
-      transactionId: '38492019482',
-      screenshotName: 'easypaisa_150_receipt.jpg',
-      status: 'Pending',
-      createdAt: '2 mins ago',
-    },
-  ]);
+  // No hardcoded sample transactions — admin panel loads real data from backend.
+  const [transactions, setTransactions] = useState<PaymentTransaction[]>([]);
 
-  const [trainingJobs, setTrainingJobs] = useState<CustomVoiceTrainingJob[]>([
-    {
-      id: 'job-sample-01',
-      userId: 'usr-sample-01',
-      userEmail: 'arslan.khan@gmail.com',
-      voiceName: 'Arslan Studio Voice',
-      audioFileNames: ['voice_recording_3min.wav'],
-      totalDurationSec: 195,
-      autoCleanNoise: true,
-      status: 'Cleaning & Queued',
-      createdAt: '10 mins ago',
-    },
-  ]);
+  // No hardcoded sample jobs — admin panel loads real data from backend.
+  const [trainingJobs, setTrainingJobs] = useState<CustomVoiceTrainingJob[]>([]);
 
   const [micClickTimestamps, setMicClickTimestamps] = useState<number[]>([]);
 
