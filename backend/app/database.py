@@ -137,6 +137,105 @@ class SupabaseRestClient:
             logger.error(f"Error updating {table}: {e}")
             return updates
 
+    def _match_filter(self, actual: Any, raw: Any) -> bool:
+        """
+        Match a single PostgREST-style filter against a stored value.
+        Supports eq., neq., gt., gte., lt., lte. prefixes (bare values = eq.).
+        Numeric-aware: tries float comparison, falls back to string compare.
+        """
+        op, target = "eq", raw
+        if isinstance(raw, str):
+            for prefix in ("neq.", "gte.", "lte.", "gt.", "lt.", "eq."):
+                if raw.startswith(prefix):
+                    op, target = prefix[:-1], raw[len(prefix):]
+                    break
+        def num(v):
+            try:
+                return float(v)
+            except (TypeError, ValueError):
+                return None
+        an, tn = num(actual), num(target)
+        if an is not None and tn is not None:
+            actual, target = an, tn
+        else:
+            actual, target = str(actual), str(target)
+        if op == "eq":
+            return actual == target
+        if op == "neq":
+            return actual != target
+        try:
+            if op == "gt":
+                return actual > target
+            if op == "gte":
+                return actual >= target
+            if op == "lt":
+                return actual < target
+            if op == "lte":
+                return actual <= target
+        except TypeError:
+            return False
+        return False
+
+    def update_where(
+        self, table: str, filters: Dict[str, Any], updates: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """
+        Conditional UPDATE: applies `updates` only to rows matching ALL
+        `filters` (PostgREST-style, e.g. {"id": "eq.1", "status": "eq.Pending",
+        "balance_pkr": "gte.150"}).
+
+        Returns the list of updated rows (empty list when nothing matched).
+        This is the race-safe primitive for approve/reject and wallet
+        deductions: the filter is evaluated atomically at update time, so
+        concurrent callers cannot double-apply. Check the returned list
+        length to detect a lost race (0 rows -> 409 Conflict).
+        """
+        if not self.is_configured():
+            matched = []
+            for item in self._mock_tables.get(table, []):
+                if all(self._match_filter(item.get(k), v) for k, v in filters.items()):
+                    item.update(updates)
+                    matched.append(dict(item))
+            return matched
+
+        try:
+            with httpx.Client(timeout=10.0) as client:
+                # `Prefer: return=representation` (in self.headers) makes
+                # PostgREST return the updated rows; [] when nothing matched.
+                res = client.patch(
+                    f"{self.rest_url}/{table}",
+                    headers=self.headers,
+                    params=filters,
+                    json=updates,
+                )
+                res.raise_for_status()
+                data = res.json()
+                return data if isinstance(data, list) else []
+        except Exception as e:
+            logger.error(f"Error conditional-updating {table}: {e}")
+            return []
+
+    def insert_strict(self, table: str, record: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        INSERT that RAISES on failure (e.g. primary-key conflict) instead of
+        swallowing the error like insert(). Used for exactly-once guards with
+        deterministic ids: a concurrent duplicate insert raises, letting the
+        caller treat it as "already done".
+        """
+        if not self.is_configured():
+            items = self._mock_tables.setdefault(table, [])
+            rid = record.get("id")
+            if rid is not None and any(str(it.get("id")) == str(rid) for it in items):
+                raise RuntimeError(f"duplicate key: {table}.id={rid}")
+            items.append(dict(record))
+            return record
+
+        with httpx.Client(timeout=10.0) as client:
+            res = client.post(f"{self.rest_url}/{table}", headers=self.headers, json=record)
+            res.raise_for_status()
+            data = res.json()
+            return data[0] if isinstance(data, list) and data else record
+
     def upload_file(self, bucket: str, path: str, file_bytes: bytes, content_type: str = "audio/mpeg") -> Optional[str]:
         if not self.is_configured():
             return f"{self.base_url}/storage/v1/object/public/{bucket}/{path}"

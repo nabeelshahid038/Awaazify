@@ -280,4 +280,80 @@ export const awaazifyApi = {
     }
     return res.json();
   },
+
+  /**
+   * POST /api/v1/users/me/sync — server-side user upsert + signup bonus.
+   * The backend creates the users row if needed and grants the Rs. 50
+   * signup bonus exactly once. Response: {"bonus_granted": bool, "balance": number}.
+   * Never throws for callers that treat it as non-blocking — but this method
+   * DOES throw on HTTP errors so callers can decide; wrap in try/catch.
+   */
+  async syncUser(): Promise<{ bonus_granted: boolean; balance: number }> {
+    console.info(`[API] POST ${API_BASE_URL}/api/v1/users/me/sync`);
+    const res = await fetch(`${API_BASE_URL}/api/v1/users/me/sync`, {
+      method: 'POST',
+      headers: await authHeaders(),
+    });
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      throw new Error(errorData.detail || `User sync failed: ${res.status}`);
+    }
+    const data = await res.json();
+    return {
+      bonus_granted: !!data.bonus_granted,
+      balance: typeof data.balance === 'number' ? data.balance : 0,
+    };
+  },
+
+  /**
+   * GET /api/v1/utils/youtube-meta?url=<encoded> — real YouTube title/author.
+   * Returns {title, author_name}; both null on any failure — the caller
+   * falls back to placeholder text. Never throws.
+   */
+  async getYouTubeMeta(
+    url: string
+  ): Promise<{ title: string | null; author_name: string | null }> {
+    const fallback = { title: null as string | null, author_name: null as string | null };
+    if (!url || !url.trim()) return fallback;
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}/api/v1/utils/youtube-meta?url=${encodeURIComponent(url.trim())}`,
+        { headers: await authHeaders() }
+      );
+      if (!res.ok) return fallback;
+      const data = await res.json();
+      return {
+        title: typeof data.title === 'string' && data.title ? data.title : null,
+        author_name:
+          typeof data.author_name === 'string' && data.author_name ? data.author_name : null,
+      };
+    } catch (err) {
+      console.warn('[API] YouTube metadata fetch failed, using placeholders:', err);
+      return fallback;
+    }
+  },
+
+  /**
+   * GET /api/v1/voices/training-jobs — the caller's training job statuses.
+   * Used to poll/refresh honest job status after submitting a training.
+   * Returns [] on any failure (caller treats as "no update").
+   */
+  async getTrainingJobs(): Promise<Array<{ id: string; status: string; voiceName?: string }>> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/v1/voices/training-jobs`, {
+        headers: await authHeaders(),
+      });
+      if (!res.ok) return [];
+      const data = await res.json();
+      const rows = Array.isArray(data) ? data : data.jobs || [];
+      return rows.map((r: any) => ({
+        id: String(r.id ?? r.trainingJobId ?? ''),
+        status: String(r.status ?? ''),
+        voiceName: r.voiceName ?? r.voice_name,
+      }));
+    } catch (err) {
+      console.warn('[API] Training jobs refresh failed:', err);
+      return [];
+    }
+  },
 };

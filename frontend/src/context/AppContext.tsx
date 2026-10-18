@@ -208,7 +208,6 @@ interface AppContextValue {
   requireAuthAndNavigate: (targetTool?: StudioTool, voiceId?: string) => void;
 
   consumeSongPassOrTrial: (isTrialJob: boolean) => boolean;
-  consumeVoicePass: () => boolean;
   addWalletPackage: (songs: number, voicePasses: number, pkrValue: number, usdValue: number) => void;
 
   // Voice Models
@@ -354,42 +353,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     if (isSupabaseConfigured) {
       try {
+        // P1: user sync + Rs. 50 signup bonus are granted SERVER-SIDE via
+        // POST /api/v1/users/me/sync (idempotent — the backend grants the
+        // bonus exactly once). The client-side direct insert is gone.
+        // Non-blocking: a backend failure must never break login.
+        let syncedBalance: number | null = null;
+        try {
+          const sync = await awaazifyApi.syncUser();
+          syncedBalance = sync.balance;
+        } catch (syncErr) {
+          console.warn('Backend user sync failed (non-blocking):', syncErr);
+        }
+
+        // Read the full wallet row for the remaining fields (read-only).
         const { data: existingUser } = await supabase
           .from('users')
           .select('*')
           .eq('id', uid)
           .maybeSingle();
 
-        if (existingUser) {
-          setWallet({
-            balancePkr: existingUser.balance_pkr ?? 0,
-            balanceUsd: existingUser.balance_usd ?? 0,
-            credits: existingUser.song_credits ?? 0,
-            voicePasses: existingUser.voice_passes ?? 0,
-            hasFreeTrial: existingUser.has_free_trial ?? true,
-          });
-        } else {
-          // First login: create in public.users with welcome credit (50 PKR / 1 song)
-          await supabase.from('users').insert({
-            id: uid,
-            email,
-            name,
-            role: 'user',
-            balance_pkr: 50,
-            balance_usd: 0.99,
-            song_credits: 1,
-            voice_passes: 0,
-            has_free_trial: true,
-            email_verified: true,
-          });
-          setWallet({
-            balancePkr: 50,
-            balanceUsd: 0.99,
-            credits: 1,
-            voicePasses: 0,
-            hasFreeTrial: true,
-          });
-        }
+        setWallet({
+          balancePkr: existingUser?.balance_pkr ?? syncedBalance ?? 50,
+          balanceUsd: existingUser?.balance_usd ?? 0,
+          credits: existingUser?.song_credits ?? 0,
+          voicePasses: existingUser?.voice_passes ?? 0,
+          hasFreeTrial: existingUser?.has_free_trial ?? true,
+        });
       } catch (err) {
         console.warn('Supabase user sync error:', err);
       }
@@ -599,20 +588,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return false;
   };
 
-  const consumeVoicePass = (): boolean => {
-    if (wallet.voicePasses >= 1 || wallet.balancePkr >= 150 || wallet.balanceUsd >= 2.99) {
-      setWallet((prev) => ({
-        ...prev,
-        voicePasses: Math.max(0, prev.voicePasses - 1),
-        credits: prev.credits + 1, // Includes 1 Free Full Song
-        balancePkr: Math.max(50, prev.balancePkr - 100),
-        balanceUsd: Math.max(0.99, Number((prev.balanceUsd - 2.0).toFixed(2))),
-      }));
-      return true;
-    }
-    return false;
-  };
-
   const addWalletPackage = (
     songs: number,
     voicePasses: number,
@@ -794,8 +769,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       await awaazifyApi.approvePayment(txId);
     } catch (err: any) {
+      const msg = err?.message || 'server error';
+      // P1: backend returns 409 when the payment was already processed
+      // (e.g. double-click race) — mark it approved locally WITHOUT
+      // crediting the wallet again, and don't alarm the admin.
+      if (msg.includes('409') || msg.toLowerCase().includes('already processed')) {
+        setTransactions((prev) =>
+          prev.map((tx) => (tx.id === txId ? { ...tx, status: 'Approved' } : tx))
+        );
+        return;
+      }
       // P0: surface backend failures to the admin instead of pretending success.
-      window.alert(`Could not approve payment: ${err?.message || 'server error'}`);
+      window.alert(`Could not approve payment: ${msg}`);
       return;
     }
     setTransactions((prev) =>
@@ -816,7 +801,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       await awaazifyApi.rejectPayment(txId);
     } catch (err: any) {
-      window.alert(`Could not reject payment: ${err?.message || 'server error'}`);
+      const msg = err?.message || 'server error';
+      // P1: 409 = already processed (double-click race) — mark rejected
+      // locally without alarming the admin.
+      if (msg.includes('409') || msg.toLowerCase().includes('already processed')) {
+        setTransactions((prev) =>
+          prev.map((tx) => (tx.id === txId ? { ...tx, status: 'Rejected' } : tx))
+        );
+        return;
+      }
+      window.alert(`Could not reject payment: ${msg}`);
       return;
     }
     setTransactions((prev) =>
@@ -836,25 +830,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       autoCleanNoise: true,
     });
 
-    const customModel: VoiceModel = {
-      id: `vm_custom_${Date.now().toString(36)}`,
-      name: data.voiceName,
-      subtitle: 'Personal Custom Voice · Noise Cleaned',
-      category: 'Custom',
-      usageCount: 1,
-      avatarConfig: {
-        silhouetteType: 'custom',
-        gradientTheme: 'emerald',
-        baseFreqHz: 210,
-      },
-      modelFileName: `${data.voiceName.toLowerCase().replace(/\s+/g, '_')}.pth`,
-      extraFileName: `${data.voiceName.toLowerCase().replace(/\s+/g, '_')}.index`,
-      defaultPitch: 0,
-      status: 'Active',
-      isCustom: true,
-      ownerUserId: user?.id || 'usr_studio',
-    };
-
+    // P1 honesty: the backend deducts Rs. 150 and queues the training job.
+    // The voice is NOT instantly active — it only enters the library after
+    // training completes and the admin publishes it. Track the job with a
+    // pending status instead of injecting a fake 'Active' model.
+    // Mirror the server-side Rs. 150 deduction optimistically so the wallet
+    // display stays in sync (the backend is the source of truth).
+    setWallet((prev) => ({
+      ...prev,
+      balancePkr: Math.max(0, prev.balancePkr - 150),
+    }));
     const newJob: CustomVoiceTrainingJob = {
       id: res.trainingJobId,
       userId: user?.id || 'usr_studio',
@@ -863,14 +848,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       audioFileNames: data.audioFileNames,
       totalDurationSec: data.totalDurationSec,
       autoCleanNoise: true,
-      status: 'Active in Library',
+      status: 'Processing',
       createdAt: 'Just now',
-      linkedModelId: customModel.id,
     };
 
     setTrainingJobs((prev) => [newJob, ...prev]);
-    setVoiceModels((prev) => [customModel, ...prev]);
-    setSelectedVoiceId(customModel.id);
   };
 
   const publishTrainedVoiceToUserLibrary = async (
@@ -946,7 +928,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         logoutUser,
         requireAuthAndNavigate,
         consumeSongPassOrTrial,
-        consumeVoicePass,
         addWalletPackage,
         voiceModels,
         addAdminVoiceModel,
