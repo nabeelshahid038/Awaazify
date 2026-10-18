@@ -53,142 +53,6 @@ function resolvePostLoginView(): 'admin' | 'studio' {
   return resolvedPostLoginView;
 }
 
-const INITIAL_VOICE_MODELS: VoiceModel[] = [
-  {
-    id: 'vm-atif-aslam',
-    name: 'Atif Aslam',
-    subtitle: 'Soulful romantic vocals for acoustic and pop tracks',
-    category: 'Singers',
-    usageCount: 24500,
-    avatarConfig: {
-      silhouetteType: 'vocalist',
-      gradientTheme: 'emerald',
-      baseFreqHz: 220,
-    },
-    modelFileName: 'atif_aslam_voice.pth',
-    extraFileName: 'atif_aslam_voice.index',
-    defaultPitch: 0,
-    status: 'Active',
-    featured: true,
-  },
-  {
-    id: 'vm-babar-azam',
-    name: 'Babar Azam',
-    subtitle: 'Crisp, friendly voice for upbeat and viral song covers',
-    category: 'Cricketers & Celebs',
-    usageCount: 19840,
-    avatarConfig: {
-      silhouetteType: 'athlete',
-      gradientTheme: 'amber',
-      baseFreqHz: 185,
-    },
-    modelFileName: 'babar_azam_voice.pth',
-    extraFileName: 'babar_azam_voice.index',
-    defaultPitch: 0,
-    status: 'Active',
-    featured: true,
-  },
-  {
-    id: 'vm-imran-khan',
-    name: 'Imran Khan',
-    subtitle: 'Deep, commanding baritone with unmistakable delivery',
-    category: 'Public Leaders',
-    usageCount: 28100,
-    avatarConfig: {
-      silhouetteType: 'orator',
-      gradientTheme: 'emerald',
-      baseFreqHz: 155,
-    },
-    modelFileName: 'imran_khan_voice.pth',
-    extraFileName: 'imran_khan_voice.index',
-    defaultPitch: -2,
-    status: 'Active',
-    featured: true,
-  },
-  {
-    id: 'vm-sidhu-moosewala',
-    name: 'Sidhu Moosewala',
-    subtitle: 'High-energy Punjabi folk and hip-hop vocal presence',
-    category: 'Singers',
-    usageCount: 31200,
-    avatarConfig: {
-      silhouetteType: 'vocalist',
-      gradientTheme: 'amber',
-      baseFreqHz: 196,
-    },
-    modelFileName: 'sidhu_voice.pth',
-    extraFileName: 'sidhu_voice.index',
-    defaultPitch: 0,
-    status: 'Active',
-    featured: true,
-  },
-  {
-    id: 'vm-nusrat-saab',
-    name: 'Nusrat Fateh Ali Khan',
-    subtitle: 'Legendary classical range for emotional and traditional songs',
-    category: 'Singers',
-    usageCount: 17900,
-    avatarConfig: {
-      silhouetteType: 'vocalist',
-      gradientTheme: 'sky',
-      baseFreqHz: 246.9,
-    },
-    modelFileName: 'nusrat_voice.pth',
-    extraFileName: 'nusrat_voice.index',
-    defaultPitch: 0,
-    status: 'Active',
-    featured: true,
-  },
-  {
-    id: 'vm-arijit-singh',
-    name: 'Arijit Singh',
-    subtitle: 'Warm, expressive melody voice for slow ballads',
-    category: 'Singers',
-    usageCount: 22450,
-    avatarConfig: {
-      silhouetteType: 'vocalist',
-      gradientTheme: 'rose',
-      baseFreqHz: 233.1,
-    },
-    modelFileName: 'arijit_voice.pth',
-    extraFileName: 'arijit_voice.index',
-    defaultPitch: 0,
-    status: 'Active',
-    featured: true,
-  },
-  {
-    id: 'vm-global-pop',
-    name: 'The Weeknd',
-    subtitle: 'Smooth modern pop and upbeat radio vocals',
-    category: 'Global Stars',
-    usageCount: 15400,
-    avatarConfig: {
-      silhouetteType: 'popstar',
-      gradientTheme: 'violet',
-      baseFreqHz: 261.6,
-    },
-    modelFileName: 'weeknd_voice.pth',
-    extraFileName: 'weeknd_voice.index',
-    defaultPitch: 2,
-    status: 'Active',
-  },
-  {
-    id: 'vm-taylor-star',
-    name: 'Taylor Swift',
-    subtitle: 'Bright, clear acoustic and pop female vocals',
-    category: 'Global Stars',
-    usageCount: 14100,
-    avatarConfig: {
-      silhouetteType: 'popstar',
-      gradientTheme: 'rose',
-      baseFreqHz: 277.2,
-    },
-    modelFileName: 'taylor_voice.pth',
-    extraFileName: 'taylor_voice.index',
-    defaultPitch: 2,
-    status: 'Active',
-  },
-];
 
 interface AppContextValue {
   regionMode: RegionMode;
@@ -290,7 +154,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [activeView, setActiveView] = useState<'public' | 'studio' | 'admin'>('public');
   const [publicPage, setPublicPage] = useState<PublicPage>('home');
   const [studioTool, setStudioTool] = useState<StudioTool>('song-cover');
-  const [selectedVoiceId, setSelectedVoiceId] = useState<string>(INITIAL_VOICE_MODELS[1].id); // Defaults to Babar Azam
+  const [selectedVoiceId, setSelectedVoiceId] = useState<string>('');
 
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
   const [pendingRedirect, setPendingRedirect] = useState<{
@@ -298,7 +162,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     voiceId?: string;
   } | null>(null);
 
-  const [voiceModels, setVoiceModels] = useState<VoiceModel[]>(INITIAL_VOICE_MODELS);
+  const [voiceModels, setVoiceModels] = useState<VoiceModel[]>([]);
   const [generatedSongs, setGeneratedSongs] = useState<GeneratedSong[]>([]);
   const [transactions, setTransactions] = useState<PaymentTransaction[]>([
     {
