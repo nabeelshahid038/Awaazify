@@ -265,4 +265,19 @@ export const awaazifyApi = {
     }
     return { voiceModelId: data.voiceModelId };
   },
+
+  /**
+   * GET /api/v1/admin/me — who is calling, and are they the admin?
+   * Uses the caller's JWT; the backend compares its email to ADMIN_EMAIL.
+   */
+  async getAdminMe(): Promise<{ is_admin: boolean; email: string | null }> {
+    const res = await fetch(`${API_BASE_URL}/api/v1/admin/me`, {
+      headers: await authHeaders(),
+    });
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      throw new Error(errorData.detail || `Admin check failed: ${res.status}`);
+    }
+    return res.json();
+  },
 };
