@@ -3,7 +3,7 @@ import { X, Scissors, Play, Square, Check, CreditCard } from 'lucide-react';
 import { TrimmedYouTubeSelection } from '../types';
 import { useApp } from '../context/AppContext';
 import { studioAudio } from '../utils/audioEngine';
-import { api } from '../services/api';
+import { awaazifyApi } from '../services/api';
 
 interface YouTubeTrimmerModalProps {
   isOpen: boolean;
@@ -52,7 +52,7 @@ export const YouTubeTrimmerModal: React.FC<YouTubeTrimmerModalProps> = ({
     (async () => {
       setIsLoadingMeta(true);
       try {
-        const meta = await api.getYouTubeMeta(youtubeUrl);
+        const meta = await awaazifyApi.getYouTubeMeta(youtubeUrl);
         if (!cancelled) {
           if (meta.duration_sec && meta.duration_sec > 0) {
             setTotalDurationSec(meta.duration_sec);
