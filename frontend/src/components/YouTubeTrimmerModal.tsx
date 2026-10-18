@@ -86,8 +86,6 @@ export const YouTubeTrimmerModal: React.FC<YouTubeTrimmerModalProps> = ({
 
   if (!isOpen) return null;
 
-  const videoTitle = 'Selected YouTube Track';
-
   const handleStartChange = (newStart: number) => {
     if (isTrialMode) {
       const clampedStart = Math.max(0, Math.min(totalDurationSec - 30, newStart));
