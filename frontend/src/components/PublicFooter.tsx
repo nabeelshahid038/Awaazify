@@ -84,6 +84,24 @@ export const PublicFooter: React.FC = () => {
         <div className="pt-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500 font-semibold">
           <span>© {new Date().getFullYear()} Awaazify. All rights reserved.</span>
           <div className="flex items-center gap-4">
+            <button
+              type="button"
+              onClick={() => setPublicPage('terms')}
+              className={`font-bold transition-colors cursor-pointer ${
+                publicPage === 'terms' ? 'text-[#059669]' : 'hover:text-[#0F172A]'
+              }`}
+            >
+              Terms of Service
+            </button>
+            <button
+              type="button"
+              onClick={() => setPublicPage('privacy')}
+              className={`font-bold transition-colors cursor-pointer ${
+                publicPage === 'privacy' ? 'text-[#059669]' : 'hover:text-[#0F172A]'
+              }`}
+            >
+              Privacy Policy
+            </button>
             <span>EasyPaisa · JazzCash · Card</span>
           </div>
         </div>

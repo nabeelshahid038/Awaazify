@@ -32,3 +32,23 @@ GPU_WORKER_API_KEY = os.getenv("GPU_WORKER_API_KEY", "")
 # (e.g. a restricted Supabase API key) and set it here / on Railway as
 # GPU_WORKER_SUPABASE_KEY. Backend code fails loudly if it is unset.
 GPU_WORKER_SUPABASE_KEY = os.getenv("GPU_WORKER_SUPABASE_KEY", "")
+
+
+def _int_env(name: str, default: int) -> int:
+    """Read an int env var defensively; fall back to default on garbage."""
+    try:
+        return int(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        return default
+
+
+# Rate limiting (P2): requests/minute per client IP on /api/* routes.
+RATE_LIMIT_PER_MINUTE = _int_env("RATE_LIMIT_PER_MINUTE", 60)
+# Stricter budget for abuse-sensitive endpoints (login/sync, payments).
+RATE_LIMIT_STRICT_PER_MINUTE = _int_env("RATE_LIMIT_STRICT_PER_MINUTE", 20)
+
+# Sentry error tracking (P2): optional. Empty DSN = disabled; the backend
+# runs fine without it. Set SENTRY_DSN on Railway to enable.
+SENTRY_DSN = os.getenv("SENTRY_DSN", "")
+SENTRY_RELEASE = os.getenv("SENTRY_RELEASE", "awaazify-backend@1.0.0")
+SENTRY_ENVIRONMENT = os.getenv("SENTRY_ENVIRONMENT", "production")
