@@ -1,9 +1,8 @@
 import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 
-from app.config import FRONTEND_URL, TEMP_AUDIO_DIR, MODELS_CACHE_DIR, HOST, PORT
+from app.config import FRONTEND_URL, HOST, PORT
 from app.routers import covers, voices, payments, admin
 
 # Setup Logging
@@ -20,14 +19,17 @@ app = FastAPI(
 )
 
 # Configure CORS
-origins = [
+# P0: never allow "*" together with allow_credentials=True. Only the
+# configured frontend origin plus local dev origins are trusted.
+_raw_origins = [
     FRONTEND_URL,
     "http://localhost:5173",
     "http://localhost:3000",
     "http://127.0.0.1:5173",
     "http://127.0.0.1:3000",
-    "*"
 ]
+origins = list(dict.fromkeys(o for o in _raw_origins if o and o.startswith("http") and o != "*"))
+logger.info(f"CORS allowed origins: {origins}")
 
 app.add_middleware(
     CORSMiddleware,
@@ -37,9 +39,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Static file mounts for temp audio and cached model previews
-app.mount("/temp_audio", StaticFiles(directory=str(TEMP_AUDIO_DIR)), name="temp_audio")
-app.mount("/models_cache", StaticFiles(directory=str(MODELS_CACHE_DIR)), name="models_cache")
+# P0: the public /temp_audio and /models_cache static mounts have been REMOVED.
+# They exposed in-progress user audio and model files to the world. Temp audio
+# is still written to disk internally by the pipeline and uploaded to Supabase
+# Storage via db.upload_file — it is never served over HTTP anymore.
 
 # Include Routers
 app.include_router(covers.router)
