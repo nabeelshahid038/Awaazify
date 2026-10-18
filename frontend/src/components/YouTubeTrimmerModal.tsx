@@ -3,6 +3,7 @@ import { X, Scissors, Play, Square, Check, CreditCard } from 'lucide-react';
 import { TrimmedYouTubeSelection } from '../types';
 import { useApp } from '../context/AppContext';
 import { studioAudio } from '../utils/audioEngine';
+import { api } from '../services/api';
 
 interface YouTubeTrimmerModalProps {
   isOpen: boolean;
@@ -51,21 +52,17 @@ export const YouTubeTrimmerModal: React.FC<YouTubeTrimmerModalProps> = ({
     (async () => {
       setIsLoadingMeta(true);
       try {
-        const API_BASE = (import.meta as any).env?.VITE_API_BASE_URL || '';
-        const resp = await fetch(`${API_BASE}/api/v1/covers/youtube-meta?url=${encodeURIComponent(youtubeUrl)}`);
-        if (resp.ok) {
-          const meta = await resp.json();
-          if (!cancelled) {
-            if (meta.duration_sec && meta.duration_sec > 0) {
-              setTotalDurationSec(meta.duration_sec);
-              // Default to a sensible segment if duration is known
-              const mid = Math.floor(meta.duration_sec / 3);
-              setStartSec(mid);
-              setEndSec(Math.min(mid + 60, meta.duration_sec));
-            }
-            if (meta.title) setVideoTitle(meta.title);
-            if (meta.thumbnail_url) setVideoThumbnail(meta.thumbnail_url);
+        const meta = await api.getYouTubeMeta(youtubeUrl);
+        if (!cancelled) {
+          if (meta.duration_sec && meta.duration_sec > 0) {
+            setTotalDurationSec(meta.duration_sec);
+            // Default to a sensible segment if duration is known
+            const mid = Math.floor(meta.duration_sec / 3);
+            setStartSec(mid);
+            setEndSec(Math.min(mid + 60, meta.duration_sec));
           }
+          if (meta.title) setVideoTitle(meta.title);
+          if (meta.thumbnail_url) setVideoThumbnail(meta.thumbnail_url);
         }
       } catch (e) {
         console.warn('YouTube meta fetch failed:', e);
