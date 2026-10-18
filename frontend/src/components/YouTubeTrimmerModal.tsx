@@ -37,6 +37,7 @@ export const YouTubeTrimmerModal: React.FC<YouTubeTrimmerModalProps> = ({
   const [videoThumbnail, setVideoThumbnail] = useState<string>('');
   const [isLoadingMeta, setIsLoadingMeta] = useState<boolean>(false);
   const [metaError, setMetaError] = useState<string>('');
+  const [hasRealDuration, setHasRealDuration] = useState<boolean>(false);
 
   const [startSec, setStartSec] = useState<number>(60);
   const [endSec, setEndSec] = useState<number>(90);
@@ -55,13 +56,14 @@ export const YouTubeTrimmerModal: React.FC<YouTubeTrimmerModalProps> = ({
       try {
         const meta = await awaazifyApi.getYouTubeMeta(youtubeUrl);
         if (!cancelled) {
-          if (!meta.title && !meta.duration_sec) {
+          if (!meta.title && !meta.thumbnail_url) {
             setMetaError('Video info nahi mil saki. URL check karein.');
           } else {
             setMetaError('');
           }
           if (meta.duration_sec && meta.duration_sec > 0) {
             setTotalDurationSec(meta.duration_sec);
+            setHasRealDuration(true);
             // Default to a sensible segment if duration is known
             const mid = Math.floor(meta.duration_sec / 3);
             setStartSec(mid);
@@ -176,7 +178,9 @@ export const YouTubeTrimmerModal: React.FC<YouTubeTrimmerModalProps> = ({
                 {isLoadingMeta ? 'Loading video...' : (videoTitle || 'Select Song Segment')}
               </h3>
               <p className="text-xs text-slate-500 font-medium mt-0.5">
-                Total Length: 00:00 — {formatTimecode(totalDurationSec)}
+                {hasRealDuration
+                  ? `Total Length: 00:00 — ${formatTimecode(totalDurationSec)}`
+                  : 'Duration: tap Preview to check, or select Full Video'}
               </p>
               {metaError && (
                 <p className="text-xs text-red-600 font-semibold mt-1">{metaError}</p>
