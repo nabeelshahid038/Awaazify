@@ -187,10 +187,8 @@ export const awaazifyApi = {
    * GET /api/v1/admin/models — list ALL voice models (admin, via backend service role)
    */
   async listAdminVoiceModels(): Promise<any[]> {
-    const token = await this.getAuthToken();
-    if (!token) throw new Error('Not authenticated');
     const response = await fetch(`${API_BASE_URL}/api/v1/admin/models`, {
-      headers: { 'Authorization': `Bearer ${token}` },
+      headers: await authHeaders(),
     });
     if (!response.ok) throw new Error(`Failed to list models: ${response.status}`);
     return response.json();
