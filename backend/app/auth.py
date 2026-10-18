@@ -1,26 +1,35 @@
 """
 Server-side authentication for the Awaazify FastAPI backend.
 
-SECURITY MODEL (P0 hardening):
+SECURITY MODEL:
 - Every protected route MUST depend on ``get_current_user`` (or ``require_admin``).
 - The Supabase access JWT is verified server-side against the Supabase Auth API
   on every request. A missing, malformed, or expired token yields HTTP 401.
 - The ``user_id`` used by a route ALWAYS comes from the verified token.
   Client-supplied ``userId`` fields / query params are accepted for backwards
   compatibility but are IGNORED for authorization and billing.
-- Admin routes additionally depend on ``require_admin``, which reads the
-  caller's ``role`` from ``public.users`` server-side (per-request DB read).
-  No client-side PIN/OTP is trusted.
+- Admin routes additionally depend on ``require_admin``, which allowlists a
+  SINGLE admin Gmail address: the verified caller's email (from the Supabase
+  JWT, i.e. their Google account) must match the ``ADMIN_EMAIL`` server env var
+  (case-insensitive). The database ``role`` column is NOT used for admin gating.
+  If ``ADMIN_EMAIL`` is unset, every admin route answers 503. Denied attempts
+  are logged with the caller's email.
 """
 import logging
-from typing import Dict
+import os
+from typing import Dict, Optional
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from app.database import db, supabase_client
+from app.database import supabase_client
 
 logger = logging.getLogger("awaazify.auth")
+
+# Single admin identity: the ONE Gmail address allowed into the admin panel.
+# Set ADMIN_EMAIL on the server (Railway env var). The caller's email comes
+# from their verified Supabase JWT (Google OAuth), so it cannot be spoofed.
+ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "").strip().lower()
 
 _bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -71,20 +80,31 @@ async def get_current_user(
     return _verify_supabase_jwt(credentials.credentials)
 
 
+def is_admin_email(email: Optional[str]) -> bool:
+    """True when the given email matches the configured admin address."""
+    return bool(ADMIN_EMAIL) and bool(email) and email.strip().lower() == ADMIN_EMAIL
+
+
 async def require_admin(
     current_user: Dict[str, str] = Depends(get_current_user),
 ) -> Dict[str, str]:
     """
-    FastAPI dependency: require a valid JWT AND ``role == 'admin'``.
+    FastAPI dependency: require a valid JWT AND the admin Gmail address.
 
-    The role is read server-side from ``public.users`` on every request, so
-    revoking admin in the database takes effect immediately.
+    The caller's email comes from the verified Supabase JWT (Google OAuth) and
+    must match ADMIN_EMAIL. 503 when ADMIN_EMAIL is not configured on the
+    server; 403 on mismatch. Every denied attempt is logged.
     """
-    rows = db.select("users", {"id": f"eq.{current_user['id']}"})
-    role = rows[0].get("role") if rows else None
-    if role != "admin":
+    if not ADMIN_EMAIL:
+        logger.error("Admin route accessed but ADMIN_EMAIL is not configured.")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Admin access is not configured on the server.",
+        )
+    email = current_user.get("email")
+    if not is_admin_email(email):
         logger.warning(
-            f"Forbidden admin-route access attempt by user={current_user['id']} (role={role!r})"
+            f"Forbidden admin-route access attempt by user={current_user.get('id')} email={email!r}"
         )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

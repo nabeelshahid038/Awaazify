@@ -3,14 +3,22 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from app.models.schemas import AdminModelPayload, PublishTrainedVoicePayload
 from app.database import db
-from app.auth import require_admin
+from app.auth import get_current_user, is_admin_email, require_admin
 
 router = APIRouter(prefix="/api/v1/admin", tags=["Admin CMS"])
 logger = logging.getLogger("awaazify.admin")
 
-# NOTE (P0): every route below requires a valid Supabase JWT AND role='admin'
-# (verified server-side in app.auth.require_admin). There is no client-side
-# PIN/OTP trust — the AdminDashboard gate is UI-only.
+# NOTE: every route below requires a valid Supabase JWT (Google OAuth).
+# Admin routes use require_admin, which allowlists ONE admin Gmail address
+# (ADMIN_EMAIL server env var) against the verified JWT email — server-side.
+# There is no client-side PIN/OTP trust — the AdminDashboard gate is UI-only.
+
+
+@router.get("/me")
+def admin_identity(current_user: dict = Depends(get_current_user)):
+    """Who is calling, and are they the admin? Used by the admin panel gate."""
+    email = current_user.get("email")
+    return {"is_admin": is_admin_email(email), "email": email}
 
 
 @router.post("/models")
