@@ -37,7 +37,9 @@ export const AdminDashboard: React.FC = () => {
     transactions,
     approveTransaction,
     rejectTransaction,
+    deleteTransaction,
     trainingJobs,
+    deleteTrainingJob,
     publishTrainedVoiceToUserLibrary,
   } = useApp();
 
@@ -705,6 +707,18 @@ export const AdminDashboard: React.FC = () => {
                               <XCircle className="w-4 h-4" />
                               <span>Reject</span>
                             </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (window.confirm('Delete this payment record permanently?')) {
+                                  deleteTransaction(tx.id);
+                                }
+                              }}
+                              title="Delete payment record"
+                              className="inline-flex items-center gap-1 px-3 py-2 rounded-xl bg-slate-100 hover:bg-red-100 text-slate-500 hover:text-red-600 font-bold text-xs cursor-pointer"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
                           </div>
                         ) : (
                           <span className="text-slate-400 text-xs font-bold">
@@ -831,6 +845,18 @@ export const AdminDashboard: React.FC = () => {
                           >
                             <CheckCircle2 className="w-3.5 h-3.5" />
                             <span>Publish to User</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (window.confirm(`Delete training job "${job.voiceName}" permanently?`)) {
+                                deleteTrainingJob(job.id);
+                              }
+                            }}
+                            title="Delete training job"
+                            className="inline-flex items-center gap-1 p-2 rounded-xl bg-slate-100 hover:bg-red-100 text-slate-500 hover:text-red-600 cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       </td>

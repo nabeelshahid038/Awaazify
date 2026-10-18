@@ -116,6 +116,8 @@ interface AppContextValue {
   }) => Promise<void>;
   approveTransaction: (txId: string) => Promise<void>;
   rejectTransaction: (txId: string) => Promise<void>;
+  deleteTransaction: (txId: string) => Promise<void>;
+  deleteTrainingJob: (jobId: string) => Promise<void>;
 
   // Custom Voice Orders
   trainingJobs: CustomVoiceTrainingJob[];
@@ -703,6 +705,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   };
 
+  const deleteTransaction = async (txId: string) => {
+    try {
+      await awaazifyApi.deletePayment(txId);
+    } catch (err: any) {
+      window.alert(`Could not delete payment: ${err?.message || 'server error'}`);
+      return;
+    }
+    setTransactions((prev) => prev.filter((tx) => tx.id !== txId));
+  };
+
+  const deleteTrainingJob = async (jobId: string) => {
+    try {
+      await awaazifyApi.deleteTrainingJob(jobId);
+    } catch (err: any) {
+      window.alert(`Could not delete training job: ${err?.message || 'server error'}`);
+      return;
+    }
+    setTrainingJobs((prev) => prev.filter((j) => j.id !== jobId));
+  };
+
   const submitCustomVoiceTraining = async (data: {
     voiceName: string;
     audioFileNames: string[];
@@ -826,6 +848,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         submitGlobalPayment,
         approveTransaction,
         rejectTransaction,
+        deleteTransaction,
+        deleteTrainingJob,
         trainingJobs,
         submitCustomVoiceTraining,
         publishTrainedVoiceToUserLibrary,
