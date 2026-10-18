@@ -441,7 +441,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       const { data } = await supabase
         .from('users')
-        .select('balance_pkr, balance_usd, song_credits, voice_passes, has_free_trial')
+        .select('balance_pkr, balance_usd, song_credits, has_free_trial')
         .eq('id', user.id)
         .maybeSingle();
       if (data) {

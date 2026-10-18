@@ -33,7 +33,8 @@ def sync_current_user(current_user: dict = Depends(get_current_user)):
                 "balance_pkr": 0,
                 "balance_usd": 0,
                 "song_credits": 0,
-                "voice_passes": 0,
+                # NOTE: voice_passes column does not exist in the table
+                # (causes PGRST204). Training is paid via balance (Rs. 150).
                 "has_free_trial": True,
                 "email_verified": True,
             })
