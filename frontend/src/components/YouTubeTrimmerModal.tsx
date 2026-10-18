@@ -30,21 +30,51 @@ export const YouTubeTrimmerModal: React.FC<YouTubeTrimmerModalProps> = ({
   onConfirm,
 }) => {
   const { wallet, regionMode, setStudioTool } = useApp();
-  const isTrialMode = wallet.credits === 0;
-  const totalDurationSec = 240; // 04:00 song length
+  const isTrialMode = wallet.hasFreeTrial;
+  const [totalDurationSec, setTotalDurationSec] = useState<number>(240);
+  const [videoTitle, setVideoTitle] = useState<string>('');
+  const [videoThumbnail, setVideoThumbnail] = useState<string>('');
+  const [isLoadingMeta, setIsLoadingMeta] = useState<boolean>(false);
 
   const [startSec, setStartSec] = useState<number>(60);
   const [endSec, setEndSec] = useState<number>(90);
   const [convertFullTrack, setConvertFullTrack] = useState<boolean>(false);
   const [isPlayingPreview, setIsPlayingPreview] = useState<boolean>(false);
 
+  // Free song = full song available. No 30s restriction anymore.
+  // (Kept for state reset when modal reopens.)
+
+  // Fetch real YouTube metadata (title, duration, thumbnail) when modal opens
   useEffect(() => {
-    if (isTrialMode) {
-      setConvertFullTrack(false);
-      setStartSec(60);
-      setEndSec(90);
-    }
-  }, [isTrialMode, isOpen]);
+    if (!isOpen || !youtubeUrl) return;
+    let cancelled = false;
+    (async () => {
+      setIsLoadingMeta(true);
+      try {
+        const API_BASE = (import.meta as any).env?.VITE_API_BASE_URL || '';
+        const resp = await fetch(`${API_BASE}/api/v1/covers/youtube-meta?url=${encodeURIComponent(youtubeUrl)}`);
+        if (resp.ok) {
+          const meta = await resp.json();
+          if (!cancelled) {
+            if (meta.duration_sec && meta.duration_sec > 0) {
+              setTotalDurationSec(meta.duration_sec);
+              // Default to a sensible segment if duration is known
+              const mid = Math.floor(meta.duration_sec / 3);
+              setStartSec(mid);
+              setEndSec(Math.min(mid + 60, meta.duration_sec));
+            }
+            if (meta.title) setVideoTitle(meta.title);
+            if (meta.thumbnail_url) setVideoThumbnail(meta.thumbnail_url);
+          }
+        }
+      } catch (e) {
+        console.warn('YouTube meta fetch failed:', e);
+      } finally {
+        if (!cancelled) setIsLoadingMeta(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isOpen, youtubeUrl]);
 
   useEffect(() => {
     return () => {
@@ -133,12 +163,16 @@ export const YouTubeTrimmerModal: React.FC<YouTubeTrimmerModalProps> = ({
         {/* Top Modal Header */}
         <div className="flex items-start justify-between gap-4 pb-4 border-b border-slate-100">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-[#059669] shrink-0">
-              <Scissors className="w-5 h-5" />
-            </div>
+            {videoThumbnail ? (
+              <img src={videoThumbnail} alt="" className="w-16 h-10 rounded-lg object-cover shrink-0 border border-slate-200" />
+            ) : (
+              <div className="w-10 h-10 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-[#059669] shrink-0">
+                <Scissors className="w-5 h-5" />
+              </div>
+            )}
             <div className="min-w-0">
               <h3 className="text-base sm:text-lg font-extrabold text-[#0F172A] truncate">
-                Select Song Segment
+                {isLoadingMeta ? 'Loading video...' : (videoTitle || 'Select Song Segment')}
               </h3>
               <p className="text-xs text-slate-500 font-medium mt-0.5">
                 Total Length: 00:00 — {formatTimecode(totalDurationSec)}
@@ -162,19 +196,18 @@ export const YouTubeTrimmerModal: React.FC<YouTubeTrimmerModalProps> = ({
         {isTrialMode ? (
           <div className="mt-4 p-4 rounded-2xl bg-[#FEF3C7]/80 border border-amber-300 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="text-xs sm:text-sm text-amber-950 font-semibold leading-relaxed">
-              Free Song: Your first cover is free. Add {singleSongPrice} to your Wallet for more songs.
+              Free Song: Your first cover is free — full video or a segment, your choice.
             </div>
             <button
               type="button"
-              onClick={() => {
-                studioAudio.stopAll();
-                onClose();
-                setStudioTool('wallet');
-              }}
-              className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#F59E0B] hover:bg-amber-600 text-white text-xs font-extrabold whitespace-nowrap shrink-0 transition-colors cursor-pointer shadow-2xs"
+              onClick={handleSelectFullVideo}
+              className={`inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-extrabold whitespace-nowrap shrink-0 transition-colors cursor-pointer shadow-2xs ${
+                convertFullTrack
+                  ? 'bg-[#10B981] text-white'
+                  : 'bg-[#F59E0B] hover:bg-amber-600 text-white'
+              }`}
             >
-              <CreditCard className="w-3.5 h-3.5" />
-              <span>Unlock Full Song ({singleSongPrice})</span>
+              <span>{convertFullTrack ? '✓ Full Video Selected' : 'Select Full Video'}</span>
             </button>
           </div>
         ) : (
@@ -251,7 +284,7 @@ export const YouTubeTrimmerModal: React.FC<YouTubeTrimmerModalProps> = ({
               </span>
             </div>
             <div className="text-[#059669] font-extrabold">
-              {selectedDuration}s {isTrialMode ? '(30s Preview)' : convertFullTrack ? '(Full Track)' : ''}
+              {selectedDuration}s {isTrialMode ? '(Free Song)' : convertFullTrack ? '(Full Track)' : ''}
             </div>
             <div>
               <span className="text-slate-500">End: </span>
@@ -293,7 +326,7 @@ export const YouTubeTrimmerModal: React.FC<YouTubeTrimmerModalProps> = ({
           <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="flex items-center justify-between text-xs font-bold text-slate-600 mb-1.5">
-                <span>{isTrialMode ? 'Slide 30s Window' : 'Start Time'}</span>
+                <span>{isTrialMode ? 'Start Time' : 'Start Time'}</span>
                 <span className="font-mono tabular-nums text-[#0F172A]">
                   {formatTimecode(convertFullTrack ? 0 : startSec)}
                 </span>
@@ -311,7 +344,7 @@ export const YouTubeTrimmerModal: React.FC<YouTubeTrimmerModalProps> = ({
 
             <div>
               <label className="flex items-center justify-between text-xs font-bold text-slate-600 mb-1.5">
-                <span>{isTrialMode ? 'End Time (+30s)' : 'End Time'}</span>
+                <span>{isTrialMode ? 'End Time' : 'End Time'}</span>
                 <span className="font-mono tabular-nums text-[#0F172A]">
                   {formatTimecode(convertFullTrack ? totalDurationSec : endSec)}
                 </span>

@@ -210,3 +210,55 @@ def list_songs(userId: str = ""):
     resolved = resolve_uuid(userId, DEFAULT_STUDIO_USER_ID) if userId else ""
     params = {"user_id": f"eq.{resolved}"} if resolved else {}
     return db.select("generated_songs", params)
+
+
+@router.get("/youtube-meta")
+def get_youtube_metadata(url: str):
+    """
+    Get real YouTube video metadata (title, duration, thumbnail, author).
+    Uses yt-dlp --skip-download for accurate duration. Falls back to oEmbed.
+    Public endpoint (no auth required) — used by the trimmer UI.
+    """
+    import subprocess
+    import shutil
+    import httpx
+    from urllib.parse import quote
+
+    result = {"title": None, "author": None, "duration_sec": None, "thumbnail_url": None}
+
+    # Try yt-dlp first (gives real duration)
+    ytdlp_bin = shutil.which("yt-dlp")
+    if ytdlp_bin:
+        try:
+            proc = subprocess.run(
+                [ytdlp_bin, "--skip-download", "--print", "%(title)s|%(duration)s|%(thumbnail)s|%(uploader)s",
+                 "--no-playlist", url],
+                capture_output=True, text=True, timeout=15
+            )
+            if proc.returncode == 0 and proc.stdout.strip():
+                parts = proc.stdout.strip().split("|")
+                if len(parts) >= 2:
+                    result["title"] = parts[0] if parts[0] != "NA" else None
+                    try:
+                        result["duration_sec"] = int(float(parts[1])) if parts[1] not in ("NA", "None") else None
+                    except (ValueError, TypeError):
+                        pass
+                    result["thumbnail_url"] = parts[2] if len(parts) > 2 and parts[2] != "NA" else None
+                    result["author"] = parts[3] if len(parts) > 3 and parts[3] != "NA" else None
+                    if result["duration_sec"]:
+                        return result
+        except Exception as e:
+            logger.warning(f"yt-dlp meta failed for {url}: {e}")
+
+    # Fallback: oEmbed (no duration, but title/author)
+    try:
+        with httpx.Client(timeout=10.0) as client:
+            resp = client.get(f"https://www.youtube.com/oembed?url={quote(url, safe='')}&format=json")
+            if resp.status_code == 200:
+                data = resp.json()
+                result["title"] = result["title"] or data.get("title")
+                result["author"] = result["author"] or data.get("author_name")
+    except Exception as e:
+        logger.warning(f"oEmbed failed for {url}: {e}")
+
+    return result
