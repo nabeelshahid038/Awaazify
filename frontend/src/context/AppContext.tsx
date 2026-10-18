@@ -79,6 +79,7 @@ interface AppContextValue {
   requireAuthAndNavigate: (targetTool?: StudioTool, voiceId?: string) => void;
 
   consumeSongPassOrTrial: (isTrialJob: boolean) => boolean;
+  refreshWallet: () => Promise<void>;
   addWalletPackage: (songs: number, voicePasses: number, pkrValue: number, usdValue: number) => void;
 
   // Voice Models
@@ -448,24 +449,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return true;
       }
     }
-    // P0: deduct EXACTLY ONE payment method per song — never more than one.
-    // Priority: 1 song credit first, then Rs. 50, then $0.99.
-    if (wallet.credits >= 1) {
-      setWallet((prev) => ({ ...prev, credits: Math.max(0, prev.credits - 1) }));
-      return true;
-    }
-    if (wallet.balancePkr >= 50) {
-      setWallet((prev) => ({ ...prev, balancePkr: Math.max(0, prev.balancePkr - 50) }));
-      return true;
-    }
-    if (wallet.balanceUsd >= 0.99) {
-      setWallet((prev) => ({
-        ...prev,
-        balanceUsd: Math.max(0, Number((prev.balanceUsd - 0.99).toFixed(2))),
-      }));
-      return true;
-    }
+    // P0 fix: CHECK-ONLY — do NOT deduct here. The backend deducts exactly
+    // once (credits, then Rs. 50, then $0.99). Client-side deduction would
+    // double-charge (same bug fixed for training in PR #5).
+    // Returns true if the user CAN pay; backend does the actual charge.
+    if (wallet.credits >= 1) return true;
+    if (wallet.balancePkr >= 50) return true;
+    if (wallet.balanceUsd >= 0.99) return true;
     return false;
+  };
+
+  /**
+   * Re-reads the wallet from Supabase after a backend charge (song cover,
+   * training) so the UI shows the true balance immediately.
+   */
+  const refreshWallet = async (): Promise<void> => {
+    if (!isSupabaseConfigured || !user?.id) return;
+    try {
+      const { data } = await supabase
+        .from('users')
+        .select('balance_pkr, balance_usd, song_credits, voice_passes, has_free_trial')
+        .eq('id', user.id)
+        .maybeSingle();
+      if (data) {
+        setWallet({
+          balancePkr: data.balance_pkr ?? 0,
+          balanceUsd: data.balance_usd ?? 0,
+          credits: data.song_credits ?? 0,
+          voicePasses: data.voice_passes ?? 0,
+          hasFreeTrial: data.has_free_trial ?? false,
+        });
+      }
+    } catch (err) {
+      console.warn('Wallet refresh failed:', err);
+    }
   };
 
   const addWalletPackage = (
@@ -835,6 +852,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         logoutUser,
         requireAuthAndNavigate,
         consumeSongPassOrTrial,
+        refreshWallet,
         addWalletPackage,
         voiceModels,
         addAdminVoiceModel,

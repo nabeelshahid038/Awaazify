@@ -15,6 +15,7 @@ import {
 import { useApp } from '../../context/AppContext';
 import { formatTimecode } from '../YouTubeTrimmerModal';
 import { awaazifyApi } from '../../services/api';
+import { InsufficientBalanceModal } from '../InsufficientBalanceModal';
 
 const MIN_REQUIRED_SECONDS = 180; // Strict 3 minutes (03:00) minimum requirement
 
@@ -57,6 +58,7 @@ export const TrainVoiceTool: React.FC = () => {
     wallet,
     formattedBalance,
     submitCustomVoiceTraining,
+    refreshWallet,
     setStudioTool,
   } = useApp();
 
@@ -78,6 +80,7 @@ export const TrainVoiceTool: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [successMsg, setSuccessMsg] = useState<string>('');
   const [errorMsg, setErrorMsg] = useState<string>('');
+  const [showBalanceModal, setShowBalanceModal] = useState<boolean>(false);
   // P1: track the last submitted job to poll its honest backend status.
   const [lastSubmittedJobName, setLastSubmittedJobName] = useState<string>('');
   const [polledJobStatus, setPolledJobStatus] = useState<string>('');
@@ -181,9 +184,8 @@ export const TrainVoiceTool: React.FC = () => {
       wallet.balancePkr < 150 &&
       wallet.balanceUsd < 2.99
     ) {
-      setErrorMsg(
-        `Please top up your wallet with the ${voicePackagePrice} Custom Voice + 1 Free Song package in the Wallet tab to proceed.`
-      );
+      // Show the insufficient-balance popup instead of just an inline error.
+      setShowBalanceModal(true);
       return;
     }
 
@@ -233,6 +235,8 @@ export const TrainVoiceTool: React.FC = () => {
     setSuccessMsg(
       `"${customVoiceName}" submitted for training — status: Training in progress. Rs. 150 has been charged to your wallet. Your voice will appear in your library once training completes.`
     );
+    // Backend charged the wallet — refresh to show the true balance.
+    refreshWallet();
     setLastSubmittedJobName(customVoiceName.trim());
     setCustomVoiceName('');
   };
@@ -653,6 +657,18 @@ export const TrainVoiceTool: React.FC = () => {
           after training completes.
         </p>
       </form>
+
+      <InsufficientBalanceModal
+        isOpen={showBalanceModal}
+        onClose={() => setShowBalanceModal(false)}
+        onTopUp={() => {
+          setShowBalanceModal(false);
+          setStudioTool('wallet');
+        }}
+        requiredPkr={150}
+        currentPkr={wallet.balancePkr}
+        actionName="Custom voice training"
+      />
     </div>
   );
 };
