@@ -79,6 +79,9 @@ export const SongCoverTool: React.FC = () => {
 
   const filteredModels = voiceModels.filter((m) => {
     if (m.status === 'Hidden') return false;
+    // Privacy: custom voices are private — only the owner sees them.
+    // (Public catalog voices have isCustom=false.)
+    if (m.isCustom && m.ownerUserId !== user?.id) return false;
     if (voiceTab === 'All') return true;
     if (voiceTab === 'Custom') return Boolean(m.isCustom);
     return m.category === voiceTab;
